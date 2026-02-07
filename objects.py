@@ -11,7 +11,7 @@ from lxml.html import fromstring, tostring
 from calibre.library.comments import sanitize_comments_html
 from calibre.utils.cleantext import clean_ascii_chars
 from calibre.utils.config import JSONConfig
-# import calibre_plugins.isfdb3.myglobals
+# import calibre_plugins.isfdb4.myglobals
 # https://www.mobileread.com/forums/showthread.php?t=344649
 from calibre_plugins.isfdb4.myglobals import (TYPE_TO_TAG, LANGUAGES, LOCALE_LANGUAGE_CODE, LOCALE_COUNTRY,
                                               EXTERNAL_IDS, TRANSLATION_REPLACINGS)
@@ -28,7 +28,7 @@ from calibre_plugins.isfdb4.myglobals import (TYPE_TO_TAG, LANGUAGES, LOCALE_LAN
 load_translations()
 # _ = gettext.gettext  # is already done by load_translations()
 
-prefs = JSONConfig('plugins/ISFDB3')
+prefs = JSONConfig('plugins/ISFDB4')
 
 def get_language_name(search_code):
     # for language_name, language_code in myglobals.LANGUAGES.items():
@@ -1016,7 +1016,7 @@ class Publication(Record):
                     # https://www.isfdb.org/cgi-bin/pe.cgi?45706
                     properties["series"] = ''
                     properties["series_index"] = 0.0
-                    # if ISFDB3.loc_prefs["combine_series"]:
+                    # if ISFDB4.loc_prefs["combine_series"]:
                     # url = detail_node[1].xpath('//a[contains(text(), "' + detail_node[1].text_content().strip() + '")]/@href')  # get all urs
                     try:
                         # In most cases, the series name is a link
@@ -1480,7 +1480,7 @@ class Publication(Record):
 
             properties["series"] = ''
             try:
-                # if ISFDB3.loc_prefs["combine_series"]:
+                # if ISFDB4.loc_prefs["combine_series"]:
                 # If series is an url, open series page and search for "Sub-series of:"
                 series_url = str(root.xpath('//*[@id="content"]/div[2]/a[2]/@href')[0])
                 if prefs['log_level'] in 'DEBUG':
@@ -2202,7 +2202,7 @@ class Series(Record):
 
 
 class ISFDBWebAPI(object):
-    # Not yet in use by ISFDB3 plugin
+    # Not yet in use by ISFDB4 plugin
 
     # Ref: https://www.isfdb.org/wiki/index.php/Web_API
 
