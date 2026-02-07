@@ -11,7 +11,7 @@ from calibre.ebooks.metadata import check_isbn, authors_to_string, author_to_aut
 from calibre.ebooks.metadata.book.base import Metadata
 from calibre.ebooks.metadata.sources.base import Source, Option, fixauthors, fixcase
 from calibre_plugins.isfdb4.objects import Publication, Title, PublicationsList, TitleList, TitleCovers
-# import calibre_plugins.isfdb3.myglobals
+# import calibre_plugins.isfdb4.myglobals
 from calibre_plugins.isfdb4.myglobals import LANGUAGES, IDENTIFIER_TYPES, EXTERNAL_IDS
 
 # References:
@@ -35,8 +35,8 @@ _ = gettext.gettext  # is already done by load_translations()
 load_translations()
 
 
-class ISFDB3(Source):
-    name = 'ISFDB3'
+class ISFDB4(Source):
+    name = 'ISFDB4'
     description = _('Downloads metadata and covers from ISFDB (https://www.isfdb.org/)')
     author = 'Michael Detambel - Forked from Adrianna Pińska\'s ISFDB2 (https://github.com/confluence/isfdb2-calibre)'
     version = (1, 4, 11)  # the plugin version number
@@ -159,10 +159,10 @@ class ISFDB3(Source):
 
     #: A string that is displayed at the top of the config widget for this plugin
     # config_help_message = None
-    config_help_message = _('For further explanations see isfdb3.md file.')
+    config_help_message = _('For further explanations see isfdb4.md file.')
 
     # # Set config values
-    # # import calibre_plugins.isfdb3.config as cfg
+    # # import calibre_plugins.isfdb4.config as cfg
 
     REVERSELANGUAGES = {}
     for k, v in LANGUAGES.items():
@@ -326,7 +326,7 @@ class ISFDB3(Source):
                              })
 
     def __init__(self, *args, **kwargs):
-        super(ISFDB3, self).__init__(*args, **kwargs)
+        super(ISFDB4, self).__init__(*args, **kwargs)
         self._publication_id_to_title_id_cache = {}
 
     def cache_publication_id_to_title_id(self, isfdb_id, title_id):
@@ -338,7 +338,7 @@ class ISFDB3(Source):
             return self._publication_id_to_title_id_cache.get(isfdb_id, None)
 
     def dump_caches(self):
-        dump = super(ISFDB3, self).dump_caches()
+        dump = super(ISFDB4, self).dump_caches()
         with self.cache_lock:
             dump.update({
                 'publication_id_to_title_id': self._publication_id_to_title_id_cache.copy(),
@@ -346,7 +346,7 @@ class ISFDB3(Source):
         return dump
 
     def load_caches(self, dump):
-        super(ISFDB3, self).load_caches(dump)
+        super(ISFDB4, self).load_caches(dump)
         with self.cache_lock:
             self._publication_id_to_title_id_cache.update(dump['publication_id_to_title_id'])
 
@@ -446,11 +446,11 @@ class ISFDB3(Source):
 
         log.info(' ')
         log.info('*' * 40)
-        log.info(_('ISFDB3 is starting...'))
+        log.info(_('ISFDB4 is starting...'))
         log.info(_('Log level is {0}.').format(self.prefs['log_level']))
 
         if self.prefs['log_level'] in 'DEBUG':
-            log.debug('*** Enter ISFDB3.identify().')
+            log.debug('*** Enter ISFDB4.identify().')
             log.debug('abort={0}'.format(abort))
             log.debug('title={0}'.format(title))
             log.debug('authors={0}'.format(authors))
@@ -1039,7 +1039,7 @@ class Worker(Thread):
                 if self.prefs['log_level'] in 'DEBUG':
                     self.log.debug('Adding book title id to avoid merging: {0}'.format(mi.title))
 
-            # Set isfdb3 identifiers
+            # Set isfdb4 identifiers
             if pub.get("isfdb"):
                 mi.set_identifier('isfdb', pub['isfdb'])
             if pub.get("isfdb-catalog"):
@@ -1164,7 +1164,7 @@ if __name__ == '__main__':  # tests
     # anthology
     # with cover
     # without cover
-    test_identify_plugin(ISFDB3.name,
+    test_identify_plugin(ISFDB4.name,
                          [
                              (  # By ISFDB
                                  {'identifiers': {'isfdb': '262210'}},
