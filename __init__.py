@@ -10,9 +10,9 @@ from threading import Thread
 from calibre.ebooks.metadata import check_isbn, authors_to_string, author_to_author_sort, title_sort
 from calibre.ebooks.metadata.book.base import Metadata
 from calibre.ebooks.metadata.sources.base import Source, Option, fixauthors, fixcase
-from calibre_plugins.isfdb3.objects import Publication, Title, PublicationsList, TitleList, TitleCovers
+from calibre_plugins.isfdb4.objects import Publication, Title, PublicationsList, TitleList, TitleCovers
 # import calibre_plugins.isfdb3.myglobals
-from calibre_plugins.isfdb3.myglobals import LANGUAGES, IDENTIFIER_TYPES, EXTERNAL_IDS
+from calibre_plugins.isfdb4.myglobals import LANGUAGES, IDENTIFIER_TYPES, EXTERNAL_IDS
 
 # References:
 #
