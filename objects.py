@@ -13,7 +13,7 @@ from calibre.utils.cleantext import clean_ascii_chars
 from calibre.utils.config import JSONConfig
 # import calibre_plugins.isfdb3.myglobals
 # https://www.mobileread.com/forums/showthread.php?t=344649
-from calibre_plugins.isfdb3.myglobals import (TYPE_TO_TAG, LANGUAGES, LOCALE_LANGUAGE_CODE, LOCALE_COUNTRY,
+from calibre_plugins.isfdb4.myglobals import (TYPE_TO_TAG, LANGUAGES, LOCALE_LANGUAGE_CODE, LOCALE_COUNTRY,
                                               EXTERNAL_IDS, TRANSLATION_REPLACINGS)
 
 # Activate GETTEXT
