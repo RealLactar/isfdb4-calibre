@@ -1,6 +1,6 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: ISFDB3\n"
+"Project-Id-Version: ISFDB4\n"
 "POT-Creation-Date: 2025-10-08 14:39+0200\n"
 "PO-Revision-Date: 2025-10-08 14:41+0200\n"
 "Last-Translator: Michael Detambel <info@michael-detambel.de>\n"
@@ -19,8 +19,8 @@ msgid "Downloads metadata and covers from ISFDB (https://www.isfdb.org/)"
 msgstr "Lädt Metadaten und Buchumschläge von ISFDB (https://www.isfdb.org/)"
 
 #: __init__.py:151
-msgid "For further explanations see isfdb3.md file."
-msgstr "Weitere Informationen in der Datei isfdb3.md."
+msgid "For further explanations see isfdb4.md file."
+msgstr "Weitere Informationen in der Datei isfdb4.md."
 
 #: __init__.py:177
 msgid "Maximum number of search results to download:"
@@ -206,8 +206,8 @@ msgstr ""
 "Serienindex aus dem Veröffentlchungdatem (Jahr/Monat) erzeugt.\n"
 
 #: __init__.py:438
-msgid "ISFDB3 is starting..."
-msgstr "ISFDB3 startet..."
+msgid "ISFDB4 is starting..."
+msgstr "ISFDB4 startet..."
 
 #: __init__.py:439
 #, python-brace-format
