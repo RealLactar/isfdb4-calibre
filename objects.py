@@ -117,31 +117,30 @@ def remove_node(child, keep_content=False):
 class ISFDBObject(object):
 
     @classmethod
-def root_from_url(cls, browser, url, timeout, log, prefs):
-    if prefs['log_level'] in 'DEBUG':
-        log.debug('*** Enter ISFDBObject.root_from_url().')
-        log.debug('url={0}'.format(url))
+    def root_from_url(cls, browser, url, timeout, log, prefs):
+        if prefs['log_level'] in 'DEBUG':
+            log.debug('*** Enter ISFDBObject.root_from_url().')
+            log.debug('url={0}'.format(url))
 
-    # Ensure modern headers to avoid ISFDB 403 blocking
-    try:
-        browser.addheaders = [
-            ('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                           'AppleWebKit/537.36 (KHTML, like Gecko) '
-                           'Chrome/120.0.0.0 Safari/537.36'),
-            ('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'),
-            ('Accept-Language', 'en-US,en;q=0.9'),
-        ]
-    except Exception:
-        pass
+        # Ensure modern headers to avoid ISFDB 403 blocking
+        try:
+            browser.addheaders = [
+                ('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                               'AppleWebKit/537.36 (KHTML, like Gecko) '
+                               'Chrome/120.0.0.0 Safari/537.36'),
+                ('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'),
+                ('Accept-Language', 'en-US,en;q=0.9'),
+            ]
+        except Exception:
+            pass
 
-    response = browser.open_novisit(url, timeout=timeout)
-    location = response.geturl()
-    raw = response.read()
-    raw = raw.decode('iso_8859_1', 'ignore')
-    return location, fromstring(clean_ascii_chars(raw))
-
-
-
+        response = browser.open_novisit(url, timeout=timeout)
+        location = response.geturl()
+        raw = response.read()
+        raw = raw.decode('iso_8859_1', 'ignore')
+        return location, fromstring(clean_ascii_chars(raw))
+    
+    
 class SearchResults(ISFDBObject):
     # URL = 'http://www.isfdb.org/cgi-bin/adv_search_results.cgi?'  # advanced search
     URL = 'https://www.isfdb.org/cgi-bin/adv_search_results.cgi?'  # advanced search
