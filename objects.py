@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import datetime
+
 # import gettext
 import re
 from urllib.parse import urlencode, unquote
@@ -11,10 +12,17 @@ from lxml.html import fromstring, tostring
 from calibre.library.comments import sanitize_comments_html
 from calibre.utils.cleantext import clean_ascii_chars
 from calibre.utils.config import JSONConfig
+
 # import calibre_plugins.isfdb4.myglobals
 # https://www.mobileread.com/forums/showthread.php?t=344649
-from calibre_plugins.isfdb4.myglobals import (TYPE_TO_TAG, LANGUAGES, LOCALE_LANGUAGE_CODE, LOCALE_COUNTRY,
-                                              EXTERNAL_IDS, TRANSLATION_REPLACINGS)
+from calibre_plugins.isfdb4.myglobals import (
+    TYPE_TO_TAG,
+    LANGUAGES,
+    LOCALE_LANGUAGE_CODE,
+    LOCALE_COUNTRY,
+    EXTERNAL_IDS,
+    TRANSLATION_REPLACINGS,
+)
 
 # Activate GETTEXT
 # This works in test file:
@@ -28,7 +36,8 @@ from calibre_plugins.isfdb4.myglobals import (TYPE_TO_TAG, LANGUAGES, LOCALE_LAN
 load_translations()
 # _ = gettext.gettext  # is already done by load_translations()
 
-prefs = JSONConfig('plugins/ISFDB4')
+prefs = JSONConfig("plugins/ISFDB4")
+
 
 def get_language_name(search_code):
     # for language_name, language_code in myglobals.LANGUAGES.items():
@@ -36,10 +45,12 @@ def get_language_name(search_code):
         if language_code == search_code:
             return language_name
 
+
 def is_roman_numeral(numeral):
     numeral = {c for c in numeral.upper()}
     valid_roman_numerals = {c for c in "MDCLXVI"}
     return not numeral - valid_roman_numerals
+
 
 # Alternate approach:
 # def is_roman_numeral(numeral):
@@ -47,6 +58,7 @@ def is_roman_numeral(numeral):
 #     if re.match(pattern, numeral):
 #         return True
 #     return False
+
 
 def roman_to_int(numeral):
     roman_symbol_map = dict(I=1, V=5, X=10, L=50, C=100, D=500, M=1000)
@@ -71,14 +83,17 @@ def roman_to_int(numeral):
             last_val = value
     return result + (-1 if subtraction else 1) * last_val * last_count
 
+
 def season_to_int(name):
-    season_names = ['Spring', 'Summer', 'Fall', 'Winter']
+    season_names = ["Spring", "Summer", "Fall", "Winter"]
     if name in season_names:
         return 1 + season_names.index(name)
     return 0
 
+
 # Kovid: No, metadata plugins run in a separate thread and have no access to the database.
 # The only metadata that is made available to them is title, authors and identifiers.
+
 
 def remove_node(child, keep_content=False):
     """
@@ -88,28 +103,28 @@ def remove_node(child, keep_content=False):
     :param keep_content: ``True`` to keep child text and sub-elements.
     """
     parent = child.getparent()
-    parent_text = parent.text or u""
+    parent_text = parent.text or ""
     prev_node = child.getprevious()
     if keep_content:
         # insert: child text
-        child_text = child.text or u""
+        child_text = child.text or ""
         if prev_node is None:
-            parent.text = u"{0}{1}".format(parent_text, child_text) or None
+            parent.text = "{0}{1}".format(parent_text, child_text) or None
         else:
-            prev_tail = prev_node.tail or u""
-            prev_node.tail = u"{0}{1}".format(prev_tail, child_text) or None
+            prev_tail = prev_node.tail or ""
+            prev_node.tail = "{0}{1}".format(prev_tail, child_text) or None
         # insert: child elements
         index = parent.index(child)
         parent[index:index] = child[:]
     # insert: child tail
-    parent_text = parent.text or u""
+    parent_text = parent.text or ""
     prev_node = child.getprevious()
-    child_tail = child.tail or u""
+    child_tail = child.tail or ""
     if prev_node is None:
-        parent.text = u"{0}{1}".format(parent_text, child_tail) or None
+        parent.text = "{0}{1}".format(parent_text, child_tail) or None
     else:
-        prev_tail = prev_node.tail or u""
-        prev_node.tail = u"{0}{1}".format(prev_tail, child_tail) or None
+        prev_tail = prev_node.tail or ""
+        prev_node.tail = "{0}{1}".format(prev_tail, child_tail) or None
     # remove: child
     parent.remove(child)
 
@@ -118,18 +133,24 @@ class ISFDBObject(object):
 
     @classmethod
     def root_from_url(cls, browser, url, timeout, log, prefs):
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('*** Enter ISFDBObject.root_from_url().')
-            log.debug('url={0}'.format(url))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("*** Enter ISFDBObject.root_from_url().")
+            log.debug("url={0}".format(url))
 
         # Ensure modern headers to avoid ISFDB 403 blocking
         try:
             browser.addheaders = [
-                ('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                               'AppleWebKit/537.36 (KHTML, like Gecko) '
-                               'Chrome/120.0.0.0 Safari/537.36'),
-                ('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'),
-                ('Accept-Language', 'en-US,en;q=0.9'),
+                (
+                    "User-Agent",
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36",
+                ),
+                (
+                    "Accept",
+                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                ),
+                ("Accept-Language", "en-US,en;q=0.9"),
             ]
         except Exception:
             pass
@@ -137,25 +158,25 @@ class ISFDBObject(object):
         response = browser.open_novisit(url, timeout=timeout)
         location = response.geturl()
         raw = response.read()
-        raw = raw.decode('iso_8859_1', 'ignore')
+        raw = raw.decode("iso_8859_1", "ignore")
         return location, fromstring(clean_ascii_chars(raw))
-    
+
 
 class SearchResults(ISFDBObject):
     # URL = 'http://www.isfdb.org/cgi-bin/adv_search_results.cgi?'  # advanced search
-    URL = 'https://www.isfdb.org/cgi-bin/adv_search_results.cgi?'  # advanced search
+    URL = "https://www.isfdb.org/cgi-bin/adv_search_results.cgi?"  # advanced search
     TYPE = None
 
     @classmethod
     def url_from_params(cls, params, log, loc_prefs):
 
         # URL = 'http://www.isfdb.org/cgi-bin/adv_search_results.cgi?'
-        URL = 'https://www.isfdb.org/cgi-bin/adv_search_results.cgi?'
+        URL = "https://www.isfdb.org/cgi-bin/adv_search_results.cgi?"
 
-        if loc_prefs['log_level'] in 'DEBUG':
+        if loc_prefs["log_level"] in "DEBUG":
             log.debug("*** Enter SearchResults.url_from_params()")
-            log.debug('URL={0}'.format(URL))
-            log.debug('params={0}'.format(params))
+            log.debug("URL={0}".format(URL))
+            log.debug("params={0}".format(params))
 
         # return cls.url + urlencode(params)  # Default encoding is utf-8, but ISFDB site is on iso-8859-1 (Latin-1)
         # Example original title with german umlaut: "Überfall vom achten Planeten"
@@ -168,27 +189,30 @@ class SearchResults(ISFDBObject):
         # log.info("urlencode(params, encoding='iso-8859-1')={0}".format(urlencode(params, encoding='iso-8859-1')))
         try:
             # return cls.url + urlencode(params, encoding='iso-8859-1')
-            return URL + urlencode(params, encoding='iso-8859-1')
+            return URL + urlencode(params, encoding="iso-8859-1")
         except UnicodeEncodeError as e:
             # unicode character in search string. Example: Unicode-Zeichen „’“ (U+2019, Right Single Quotation Mark)
-            log.error(_('Error while encoding {0}: {1}.').format(params, e))
-            encoded_params = urlencode(params, encoding='iso-8859-1', errors='replace')
+            log.error(_("Error while encoding {0}: {1}.").format(params, e))
+            encoded_params = urlencode(params, encoding="iso-8859-1", errors="replace")
             # cut the search string before the non-iso-8859-1 character (? is the encoding replae char)
-            encoded_params = encoded_params.split('%3F')[0]
-            log.info(_('Truncate the search string at the error position and search with the substring: {0}.').format(
-                encoded_params))
+            encoded_params = encoded_params.split("%3F")[0]
+            log.info(
+                _(
+                    "Truncate the search string at the error position and search with the substring: {0}."
+                ).format(encoded_params)
+            )
             return URL + encoded_params
 
     @classmethod
     def simple_url_from_params(cls, params, log, prefs):
 
         # URL = 'http://www.isfdb.org/cgi-bin/se.cgi?'  # simple search (not logged-in user)
-        URL = 'https://www.isfdb.org/cgi-bin/se.cgi?'  # simple search (not logged-in user)
+        URL = "https://www.isfdb.org/cgi-bin/se.cgi?"  # simple search (not logged-in user)
 
-        if prefs['log_level'] in 'DEBUG':
+        if prefs["log_level"] in "DEBUG":
             log.debug("*** Enter SearchResults.simple_url_from_params()")
-            log.debug('URL={0}'.format(URL))
-            log.debug('params={0}'.format(params))
+            log.debug("URL={0}".format(URL))
+            log.debug("params={0}".format(params))
 
         # return cls.URL + urlencode(params)  # Default encoding is utf-8, but ISFDB site is on iso-8859-1 (Latin-1)
         # Example original title with german umlaut: "Überfall vom achten Planeten"
@@ -201,31 +225,40 @@ class SearchResults(ISFDBObject):
         # log.info("urlencode(params, encoding='iso-8859-1')={0}".format(urlencode(params, encoding='iso-8859-1')))
         try:
             # return cls.URL + urlencode(params, encoding='iso-8859-1')
-            return URL + urlencode(params, encoding='iso-8859-1')
+            return URL + urlencode(params, encoding="iso-8859-1")
         except UnicodeEncodeError as e:
             # unicode character in search string. Example: Unicode-Zeichen „’“ (U+2019, Right Single Quotation Mark)
-            log.error(_('Error while encoding {0}: {1}.').format(params, e))
-            encoded_params = urlencode(params, encoding='iso-8859-1', errors='replace')
+            log.error(_("Error while encoding {0}: {1}.").format(params, e))
+            encoded_params = urlencode(params, encoding="iso-8859-1", errors="replace")
             # cut the search string before the non-iso-8859-1 character (? is the encoding replae char)
-            encoded_params = encoded_params.split('%3F')[0]
-            log.info(_('Truncate the search string at the error position and search with the substring: {0}.').format(
-                encoded_params))
+            encoded_params = encoded_params.split("%3F")[0]
+            log.info(
+                _(
+                    "Truncate the search string at the error position and search with the substring: {0}."
+                ).format(encoded_params)
+            )
             return URL + encoded_params
 
     @classmethod
     def is_type_of(cls, url, log, prefs):
 
-        if prefs['log_level'] in 'DEBUG':
+        if prefs["log_level"] in "DEBUG":
             log.debug("*** Enter SearchResults.is_type_of()")
-            log.debug('url={0}'.format(url))
+            log.debug("url={0}".format(url))
 
-        advanced_url = 'https://www.isfdb.org/cgi-bin/adv_search_results.cgi?'
-        simple_url = 'https://www.isfdb.org/cgi-bin/se.cgi?'
+        advanced_url = "https://www.isfdb.org/cgi-bin/adv_search_results.cgi?"
+        simple_url = "https://www.isfdb.org/cgi-bin/se.cgi?"
 
-        advanced_url_type = url.startswith(advanced_url) and ("TYPE=%s" % cls.TYPE) in url
+        advanced_url_type = (
+            url.startswith(advanced_url) and ("TYPE=%s" % cls.TYPE) in url
+        )
         simple_url_type = url.startswith(simple_url) and ("TYPE=%s" % cls.TYPE) in url
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('advanced_url_type={0}, simple_url_type={1}'.format(advanced_url_type, simple_url_type))
+        if prefs["log_level"] in "DEBUG":
+            log.debug(
+                "advanced_url_type={0}, simple_url_type={1}".format(
+                    advanced_url_type, simple_url_type
+                )
+            )
         if advanced_url_type:
             return advanced_url_type
         else:
@@ -254,7 +287,7 @@ class PublicationsList(SearchResults):
     @classmethod
     def url_from_title_and_author(cls, title, author, log, prefs):
 
-        if prefs['log_level'] in 'DEBUG':
+        if prefs["log_level"] in "DEBUG":
             log.debug("*** Enter PublicationsList.url_from_title_and_author().")
             log.debug("title={0}, author={1}".format(title, author))
             log.debug("prefs={0}".format(prefs))
@@ -273,40 +306,46 @@ class PublicationsList(SearchResults):
         if title:
             field += 1
             # For very short titles there ist a possible marker '=' as first character in title field
-            if prefs['exact_search']:
-                operator = 'exact'
+            if prefs["exact_search"]:
+                operator = "exact"
             else:
-                operator = 'contains'
-            params.update({
-                "USE_%d" % field: "pub_title",
-                "OPERATOR_%d" % field: operator,
-                "TERM_%d" % field: title,
-            })
+                operator = "contains"
+            params.update(
+                {
+                    "USE_%d" % field: "pub_title",
+                    "OPERATOR_%d" % field: operator,
+                    "TERM_%d" % field: title,
+                }
+            )
 
         if author:
             field += 1
-            params.update({
-                "USE_%d" % field: "author_canonical",
-                "OPERATOR_%d" % field: "contains",
-                "TERM_%d" % field: author,
-            })
+            params.update(
+                {
+                    "USE_%d" % field: "author_canonical",
+                    "OPERATOR_%d" % field: "contains",
+                    "TERM_%d" % field: author,
+                }
+            )
 
         if "USE_2" in params:
-            params.update({
-                "CONJUNCTION_1": "AND",
-            })
+            params.update(
+                {
+                    "CONJUNCTION_1": "AND",
+                }
+            )
 
         url = cls.url_from_params(params, log, prefs)
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('url={0}.'.format(url))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("url={0}.".format(url))
         return url  # cls.url_from_params(params, log)
 
     @classmethod
     def from_url(cls, browser, url, timeout, log, prefs):
 
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('*** Enter PublicationsList.from_url().')
-            log.debug('url={0}'.format(url))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("*** Enter PublicationsList.from_url().")
+            log.debug("url={0}".format(url))
 
         publication_stubs = []
 
@@ -316,34 +355,41 @@ class PublicationsList(SearchResults):
         try:
             for tooltip in root.xpath('//sup[@class="mouseover"]'):
                 tooltip.getparent().remove(
-                    tooltip)  # We grab the parent of the element to call the remove directly on it
-            for tooltip in root.xpath('//span[@class="tooltiptext tooltipnarrow tooltipright"]'):
+                    tooltip
+                )  # We grab the parent of the element to call the remove directly on it
+            for tooltip in root.xpath(
+                '//span[@class="tooltiptext tooltipnarrow tooltipright"]'
+            ):
                 tooltip.getparent().remove(
-                    tooltip)  # We grab the parent of the element to call the remove directly on it
+                    tooltip
+                )  # We grab the parent of the element to call the remove directly on it
         except Exception as e:
-            log.debug('Exception ignored:{0}'.format(e))
+            log.debug("Exception ignored:{0}".format(e))
 
         rows = root.xpath('//div[@id="main"]/table/tr')
 
         for row in rows:
             # log.info('row={0}'.format(row.xpath('.')[0].text_content()))
-            if not row.xpath('td'):
+            if not row.xpath("td"):
                 continue  # header
 
             publication_stubs.append(Publication.stub_from_search(row, log, prefs))
 
-        if prefs['log_level'] in 'DEBUG':
-            log.debug("Parsed publications from url %r. Found %d publications." % (url, len(publication_stubs)))
-            log.debug('publication_stubs={0}'.format(publication_stubs))
+        if prefs["log_level"] in "DEBUG":
+            log.debug(
+                "Parsed publications from url %r. Found %d publications."
+                % (url, len(publication_stubs))
+            )
+            log.debug("publication_stubs={0}".format(publication_stubs))
 
         return publication_stubs
 
     @classmethod
     def from_publication_ids(cls, browser, pub_ids, timeout, log, prefs):
 
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('*** Enter PublicationsList.from_publication_ids().')
-            log.debug('pub_ids={0}'.format(pub_ids))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("*** Enter PublicationsList.from_publication_ids().")
+            log.debug("pub_ids={0}".format(pub_ids))
 
         # ToDo
 
@@ -389,11 +435,11 @@ class TitleList(SearchResults):
     @classmethod
     def url_from_exact_title_author_and_type(cls, title, author, ttype, log, prefs):
 
-        if prefs['log_level'] in 'DEBUG':
+        if prefs["log_level"] in "DEBUG":
             log.debug("*** Enter TitleList.url_from_exact_title_author_and_type().")
             log.debug("title={0}, author={1}, ttype={2}".format(title, author, ttype))
 
-        if author != '':
+        if author != "":
             params = {
                 "USE_1": "title_title",
                 "OPERATOR_1": "exact",
@@ -425,14 +471,14 @@ class TitleList(SearchResults):
             }
 
         url = cls.url_from_params(params, log, prefs)
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('url={0}.'.format(url))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("url={0}.".format(url))
         return url  # cls.url_from_params(params, log)
 
     @classmethod
     def url_from_title_and_author(cls, title, author, log, prefs):
 
-        if prefs['log_level'] in 'DEBUG':
+        if prefs["log_level"] in "DEBUG":
             log.debug("*** Enter TitleList.url_from_title_and_author().")
             log.debug("title={0}, author={1}".format(title, author))
             log.debug("cls.TYPE={0}".format(cls.TYPE))
@@ -449,38 +495,44 @@ class TitleList(SearchResults):
         if title:
             field += 1
             # For very short titles there ist a possible marker '=' as first character in title field
-            if prefs['exact_search']:
-                operator = 'exact'
+            if prefs["exact_search"]:
+                operator = "exact"
             else:
-                operator = 'contains'
-            params.update({
-                "USE_%d" % field: "title_title",
-                "OPERATOR_%d" % field: operator,
-                "TERM_%d" % field: title,
-            })
+                operator = "contains"
+            params.update(
+                {
+                    "USE_%d" % field: "title_title",
+                    "OPERATOR_%d" % field: operator,
+                    "TERM_%d" % field: title,
+                }
+            )
 
         if author:
             field += 1
-            params.update({
-                "USE_%d" % field: "author_canonical",
-                "OPERATOR_%d" % field: "contains",
-                "TERM_%d" % field: author,
-            })
+            params.update(
+                {
+                    "USE_%d" % field: "author_canonical",
+                    "OPERATOR_%d" % field: "contains",
+                    "TERM_%d" % field: author,
+                }
+            )
 
         if "USE_2" in params:
-            params.update({
-                "CONJUNCTION_1": "AND",
-            })
+            params.update(
+                {
+                    "CONJUNCTION_1": "AND",
+                }
+            )
 
         url = cls.url_from_params(params, log, prefs)
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('url={0}.'.format(url))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("url={0}.".format(url))
         return url  # cls.url_from_params(params, log)
 
     @classmethod
     def simple_url_from_title(cls, title, author, log, prefs):
 
-        if prefs['log_level'] in 'DEBUG':
+        if prefs["log_level"] in "DEBUG":
             log.debug("*** Enter TitleList.simple_url_from_title().")
             log.debug("title={0}, author={1}".format(title, author))
             log.debug("prefs={0}".format(prefs))
@@ -489,34 +541,38 @@ class TitleList(SearchResults):
 
         # https://www.isfdb.org/cgi-bin/se.cgi?arg=project+saturn&type=All+Titles
         params = {
-            "TYPE": 'All Titles',  # cls.TYPE
+            "TYPE": "All Titles",  # cls.TYPE
         }
 
         if title:
             field += 1
             # For very short titles there ist a possible marker '=' as the first character in title field
-            if prefs['exact_search']:
-                operator = 'exact'
+            if prefs["exact_search"]:
+                operator = "exact"
             else:
-                operator = 'contains'
-            params.update({
-                "USE_%d" % field: "title_title",
-                "OPERATOR_%d" % field: operator,
-                "ARG": title,
-            })
+                operator = "contains"
+            params.update(
+                {
+                    "USE_%d" % field: "title_title",
+                    "OPERATOR_%d" % field: operator,
+                    "ARG": title,
+                }
+            )
 
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('params={0}.'.format(params))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("params={0}.".format(params))
 
         url = cls.simple_url_from_params(params, log, prefs)
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('url={0}.'.format(url))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("url={0}.".format(url))
         return url  # cls.simple_url_from_params(params, log)
 
     @classmethod
-    def url_from_title_with_keywords(cls, title_with_keywords, keyword_list, log, prefs):
+    def url_from_title_with_keywords(
+        cls, title_with_keywords, keyword_list, log, prefs
+    ):
 
-        if prefs['log_level'] in 'DEBUG':
+        if prefs["log_level"] in "DEBUG":
             log.debug("*** Enter TitleList.url_from_title_with_keywords().")
             log.debug("title_with_keywords={0}".format(title_with_keywords))
             log.debug("keyword_list={0}".format(keyword_list))
@@ -526,7 +582,7 @@ class TitleList(SearchResults):
 
         # https://www.isfdb.org/cgi-bin/se.cgi?arg=project+saturn&type=All+Titles
         params = {
-            "TYPE": 'All Titles',  # cls.TYPE
+            "TYPE": "All Titles",  # cls.TYPE
         }
 
         # Extract title from keyword "Title:"
@@ -539,28 +595,31 @@ class TitleList(SearchResults):
         title_dict = {}
         list_index = 0
         for keyword in keyword_list:
-            title_dict[keyword] = \
-                title_with_keywords[keyword_start_list[list_index] + len(keyword):keyword_start_list[list_index + 1]] \
-                    .strip()
+            title_dict[keyword] = title_with_keywords[
+                keyword_start_list[list_index]
+                + len(keyword) : keyword_start_list[list_index + 1]
+            ].strip()
             list_index = list_index + 1
-        if prefs['log_level'] in 'DEBUG':
+        if prefs["log_level"] in "DEBUG":
             log.debug("title_dict={0}".format(title_dict))
 
-        title = title_dict['Title:']
-        year = title_dict['Year:']
+        title = title_dict["Title:"]
+        year = title_dict["Year:"]
 
         if title:
             field += 1
             # For very short titles there ist a possible marker '=' as the first character in title field
-            if prefs['exact_search']:
-                operator = 'exact'
+            if prefs["exact_search"]:
+                operator = "exact"
             else:
-                operator = 'contains'
-            params.update({
-                "USE_%d" % field: "title_title",
-                "OPERATOR_%d" % field: operator,
-                "ARG": title + ' - ' + year,
-            })
+                operator = "contains"
+            params.update(
+                {
+                    "USE_%d" % field: "title_title",
+                    "OPERATOR_%d" % field: operator,
+                    "ARG": title + " - " + year,
+                }
+            )
 
         # https://www.isfdb.org/cgi-bin/se.cgi?arg=The+Magazine+of+Fantasy+and+Science+Fiction&type=Magazine
         # -> Series: The Magazine of Fantasy and Science Fiction
@@ -570,24 +629,26 @@ class TitleList(SearchResults):
         # ToDo: Find correct url for simple search for all titles
 
         url = cls.simple_url_from_params(params, log, prefs)
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('url={0}.'.format(url))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("url={0}.".format(url))
         return url  # cls.simple_url_from_params(params, log)
 
     @classmethod
     def from_url(cls, browser, url, timeout, log, prefs):
 
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('*** Enter TitleList.from_url().')
-            log.debug('url={0}'.format(url))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("*** Enter TitleList.from_url().")
+            log.debug("url={0}".format(url))
             # https://www.isfdb.org/cgi-bin/adv_search_results.cgi?ORDERBY=title_title&START=0&TYPE=Title&USE_1=title_title&OPERATOR_1=contains&TERM_1=In+The+Vault&USE_2=author_canonical&OPERATOR_2=contains&TERM_2=H.+P.+Lovecraft&CONJUNCTION_1=AND
 
         title_stubs = []
         simple_search_url = None
 
-        location, root = cls.root_from_url(browser, url, timeout, log, prefs)  # site encoding is iso-8859-1
+        location, root = cls.root_from_url(
+            browser, url, timeout, log, prefs
+        )  # site encoding is iso-8859-1
         if root is None:
-            log.debug(_('No root found with this url. Abort.'))
+            log.debug(_("No root found with this url. Abort."))
             abort = True
             return []
 
@@ -595,21 +656,31 @@ class TitleList(SearchResults):
         try:
             for tooltip in root.xpath('//sup[@class="mouseover"]'):
                 tooltip.getparent().remove(
-                    tooltip)  # We grab the parent of the element to call the remove directly on it
-            for tooltip in root.xpath('//span[@class="tooltiptext tooltipnarrow tooltipright"]'):
+                    tooltip
+                )  # We grab the parent of the element to call the remove directly on it
+            for tooltip in root.xpath(
+                '//span[@class="tooltiptext tooltipnarrow tooltipright"]'
+            ):
                 # We grab the parent of the element to call the remove directly on it
                 tooltip.getparent().remove(tooltip)
         except Exception as e:
-            log.debug('Exception ignored:{0}'.format(e))
+            log.debug("Exception ignored:{0}".format(e))
 
         rows = root.xpath('//div[@id="main"]/form/table/tr')
         # rows = root.xpath('//div[@id="main"]/form/table/tr[@class="table1"]')
         if not rows:
             # New message in May 2022: "For performance reasons, Advanced Searches are currently restricted to registered users."
             # tostring() produces a byte object!, so decode
-            root_str = etree.tostring(root, encoding='utf8', method='xml').decode()
-            if 'For performance reasons, Advanced Searches are currently restricted to registered users.' in root_str:
-                log.debug(_('Advanced search not allowed for not logged in users. Trying a simple search.'))
+            root_str = etree.tostring(root, encoding="utf8", method="xml").decode()
+            if (
+                "For performance reasons, Advanced Searches are currently restricted to registered users."
+                in root_str
+            ):
+                log.debug(
+                    _(
+                        "Advanced search not allowed for not logged in users. Trying a simple search."
+                    )
+                )
                 # Simple search works:
                 # https://www.isfdb.org/cgi-bin/se.cgi?arg=under+the+green+star&type=All+Titles
                 # https://www.isfdb.org/cgi-bin/se.cgi?arg=Lin+Carter&type=Name
@@ -626,40 +697,55 @@ class TitleList(SearchResults):
                 simple_search_url = url[:30]
                 simple_search_url = simple_search_url + "se.cgi?arg="
                 # url=https://www.isfdb.org/cgi-bin/adv_search_results.cgi?ORDERBY=title_title&START=0&TYPE=Title&USE_1=title_title&OPERATOR_1=contains&TERM_1=Ring+of+Destiny
-                simple_search_url = simple_search_url + re.search(r'&TERM_1=(.*)?(&|$)', url).group(1)
+                simple_search_url = simple_search_url + re.search(
+                    r"&TERM_1=(.*)?(&|$)", url
+                ).group(1)
                 simple_search_url = simple_search_url + "&type=All+Titles"
-                if prefs['exact_search']:
-                    simple_search_url = simple_search_url.replace('contains', 'exact')  # ToDo: Exact search only for title???
-                log.debug('simple_search_url={0}'.format(simple_search_url))
+                if prefs["exact_search"]:
+                    simple_search_url = simple_search_url.replace(
+                        "contains", "exact"
+                    )  # ToDo: Exact search only for title???
+                log.debug("simple_search_url={0}".format(simple_search_url))
                 # https://www.isfdb.org/cgi-bin/se.cgi?arg=STONE&USE_2=author_canonical&OPERATOR_2=exact&TERM_2=Edward+Bryant&CONJUNCTION_1=AND&type=All+Titles
                 # In simple search all params except 'arg' and 'type' are ignored: https://www.isfdb.org/cgi-bin/se.cgi?arg=STONE&type=Fiction+Titles
                 # A search for 'STONE' found 3720 matches.
                 # The first 300 matches are displayed below. Use Advanced Title Search to see more matches.
                 # For simple search, max_results and max_covers must be increased to get all possible results
-                prefs['max_results'] = 300
-                prefs['max_covers'] = 300
-                location, root = cls.root_from_url(browser, simple_search_url, timeout, log,
-                                                   prefs)  # site encoding is iso-8859-1
+                prefs["max_results"] = 300
+                prefs["max_covers"] = 300
+                location, root = cls.root_from_url(
+                    browser, simple_search_url, timeout, log, prefs
+                )  # site encoding is iso-8859-1
                 # If still no results, debug:
                 if not root:
-                    log.debug(_('No root found, neither with advanced or simple search. HTML output follows. Abort.'))
+                    log.debug(
+                        _(
+                            "No root found, neither with advanced or simple search. HTML output follows. Abort."
+                        )
+                    )
                     abort = True
                     return []
 
                 # Show number of result records
                 result_records = root.xpath('//*[@id="main"]/p[1]/b/text()[1]')
-                log.debug('{0}'.format(result_records))
+                log.debug("{0}".format(result_records))
 
                 # Get rid of tooltips
                 try:
                     for tooltip in root.xpath('//sup[@class="mouseover"]'):
                         tooltip.getparent().remove(
-                            tooltip)  # We grab the parent of the element to call the remove directly on it
-                    for tooltip in root.xpath('//span[@class="tooltiptext tooltipnarrow tooltipright"]'):
+                            tooltip
+                        )  # We grab the parent of the element to call the remove directly on it
+                    for tooltip in root.xpath(
+                        '//span[@class="tooltiptext tooltipnarrow tooltipright"]'
+                    ):
                         tooltip.getparent().remove(
-                            tooltip)  # We grab the parent of the element to call the remove directly on it
+                            tooltip
+                        )  # We grab the parent of the element to call the remove directly on it
                 except Exception as e:
-                    log.debug('Exception ignored while deleting tooltips: {0}'.format(e))
+                    log.debug(
+                        "Exception ignored while deleting tooltips: {0}".format(e)
+                    )
 
                 # //*[@id="main"]/table
                 rows = root.xpath('//div[@id="main"]/table/tr')
@@ -671,12 +757,18 @@ class TitleList(SearchResults):
                     # <div class="ContentBox">
                     # <b>Title:</b> The War Beneath the Tree
                     # <span class="recordID"><b>Title Record # </b>57407</span>
-                    root_str = etree.tostring(root, encoding='utf8', method='xml').decode()
+                    root_str = etree.tostring(
+                        root, encoding="utf8", method="xml"
+                    ).decode()
 
                     if '<span class="recordID"><b>Title Record #' in root_str:
                         log.debug(
-                            _('ISFDB webpage has redirected to a title page (only one title found), located at: {0}.'.format(
-                                location)))
+                            _(
+                                "ISFDB webpage has redirected to a title page (only one title found), located at: {0}.".format(
+                                    location
+                                )
+                            )
+                        )
                         log.debug(root_str[:800])
 
                         # Das haben wir:
@@ -713,116 +805,174 @@ class TitleList(SearchResults):
 
                         properties = {}
                         properties["url"] = location
-                        title = re.search(r'<title>Title: (.*)</title>', root_str).group(1).strip()
-                        title = re.sub(r'<.*?>', '', title)  # Get rid of html tags
-                        title = title.replace('Title:', '').strip()
+                        title = (
+                            re.search(r"<title>Title: (.*)</title>", root_str)
+                            .group(1)
+                            .strip()
+                        )
+                        title = re.sub(r"<.*?>", "", title)  # Get rid of html tags
+                        title = title.replace("Title:", "").strip()
                         properties["title"] = [title]
                         properties["date"] = datetime.date
                         try:
-                            properties["author"] = [re.search(r'<b>Author:</b>(.*)\\r\\n<br><b>Date:</b>', root_str,
-                                                              re.MULTILINE).group(1).strip()]
-                            properties["author"] = [re.sub(r'<.*?>', '', properties["author"])]  # Get rid of html tags
+                            properties["author"] = [
+                                re.search(
+                                    r"<b>Author:</b>(.*)\\r\\n<br><b>Date:</b>",
+                                    root_str,
+                                    re.MULTILINE,
+                                )
+                                .group(1)
+                                .strip()
+                            ]
+                            properties["author"] = [
+                                re.sub(r"<.*?>", "", properties["author"])
+                            ]  # Get rid of html tags
                         except AttributeError:
                             properties["author"] = []
                         # content_box = root.xpath('//*[@id="content"]/div[1])')
-                        if prefs['log_level'] in 'DEBUG':
-                            log.debug('properties["title"]={0}, properties["url"]={1}.'.format(properties["title"],
-                                                                                               properties["url"]))
-                        title_stubs = [{'title': properties["title"], 'url': properties["url"],
-                                        'authors': properties["author"], 'date': properties["date"]}]
+                        if prefs["log_level"] in "DEBUG":
+                            log.debug(
+                                'properties["title"]={0}, properties["url"]={1}.'.format(
+                                    properties["title"], properties["url"]
+                                )
+                            )
+                        title_stubs = [
+                            {
+                                "title": properties["title"],
+                                "url": properties["url"],
+                                "authors": properties["author"],
+                                "date": properties["date"],
+                            }
+                        ]
 
                         return title_stubs
 
-                    log.debug('No rows found, neither with advanced or simple search. HTML output follows. Abort.')
+                    log.debug(
+                        "No rows found, neither with advanced or simple search. HTML output follows. Abort."
+                    )
                     log.debug(etree.tostring(root, pretty_print=True))
                     abort = True
                     return []
 
         for row in rows:
-            if prefs['log_level'] in 'DEBUG':
-                log.debug('row={0}'.format(row.xpath('.')[0].text_content()))
+            if prefs["log_level"] in "DEBUG":
+                log.debug("row={0}".format(row.xpath(".")[0].text_content()))
 
-            if not row.xpath('td'):
-                if prefs['log_level'] in 'DEBUG':
-                    log.debug('Table header ignored.')
+            if not row.xpath("td"):
+                if prefs["log_level"] in "DEBUG":
+                    log.debug("Table header ignored.")
                 continue  # ignore header cols
 
             if simple_search_url:
                 # If simple search: Filter text titles (NOVEL etc.)
-                if row.xpath('td[2]')[0].text_content() not in ('ANTHOLOGY', 'CHAPBOOK', 'COLLECTION', 'ESSAY',
-                                                                'MAGAZINE', 'NONFICTION', 'NOVEL', 'OMNIBUS', 'POEM',
-                                                                'SHORTFICTION', 'COVERART'):
+                if row.xpath("td[2]")[0].text_content() not in (
+                    "ANTHOLOGY",
+                    "CHAPBOOK",
+                    "COLLECTION",
+                    "ESSAY",
+                    "MAGAZINE",
+                    "NONFICTION",
+                    "NOVEL",
+                    "OMNIBUS",
+                    "POEM",
+                    "SHORTFICTION",
+                    "COVERART",
+                ):
                     # Notabene added COVERART: Sometimes there is no other record which directs to the pub record.
-                    if prefs['log_level'] in 'DEBUG':
-                        log.debug('Type ignored.')
+                    if prefs["log_level"] in "DEBUG":
+                        log.debug("Type ignored.")
                     continue
                 # Filter languages
-                if prefs['log_level'] in 'DEBUG':
-                    log.debug('loc_prefs[languages]={0}'.format(prefs['languages']))
+                if prefs["log_level"] in "DEBUG":
+                    log.debug("loc_prefs[languages]={0}".format(prefs["languages"]))
                 # Get the content of the languages field in calibre meta data
-                if row.xpath('td[3]')[0].text_content() not in ('English', get_language_name(prefs['languages'])):
-                    if prefs['log_level'] in 'DEBUG':
-                        log.debug('Language ignored.')
+                if row.xpath("td[3]")[0].text_content() not in (
+                    "English",
+                    get_language_name(prefs["languages"]),
+                ):
+                    if prefs["log_level"] in "DEBUG":
+                        log.debug("Language ignored.")
                     continue  # ignore language
-                if prefs['log_level'] in 'DEBUG':
-                    log.debug('td[5]={0}'.format(row.xpath('td[5]')[0].text_content()))
+                if prefs["log_level"] in "DEBUG":
+                    log.debug("td[5]={0}".format(row.xpath("td[5]")[0].text_content()))
                 # https://www.isfdb.org/cgi-bin/adv_search_results.cgi?ORDERBY=title_title&START=0&TYPE=Title
                 # &USE_1=title_title&OPERATOR_1=exact&TERM_1=Sph%E4renkl%E4nge
                 # or:
                 # https://www.isfdb.org/cgi-bin/adv_search_results.cgi?ORDERBY=title_title&START=0&TYPE=Title&
                 # USE_1=title_title&OPERATOR_1=exact&TERM_1=Endzeit&USE_2=author_canonical&OPERATOR_2=contains&
                 # TERM_2=Herbert+W.+Franke&CONJUNCTION_1=AND
-                if prefs['exact_search']:
+                if prefs["exact_search"]:
                     # TERM_1=Sph%E4renkl%E4nge
-                    title = re.search(r'TERM_1=(.+?)$', url)  # test case 1
+                    title = re.search(r"TERM_1=(.+?)$", url)  # test case 1
                     if title:
                         title_str = str(title.group(1))
-                        if '&' in title_str:  # case 2
-                            title = re.search(r'TERM_1=(.+?)&', url)
+                        if "&" in title_str:  # case 2
+                            title = re.search(r"TERM_1=(.+?)&", url)
                             title_str = str(title.group(1))
-                        title_str = title_str.replace('+', ' ')
+                        title_str = title_str.replace("+", " ")
                         title_str = title_str.lower()
-                        title_str = unquote(title_str, encoding='iso-8859-1', errors='replace')
-                        log.debug('Title to find is "{0}", Title in page is "{1}"'.
-                                  format(title_str, row.xpath('td[4]')[0].text_content()))
-                        if not title_str == row.xpath('td[4]')[0].text_content().lower():
-                            if prefs['log_level'] in 'DEBUG':
-                                log.debug('Title ignored because "exact search" is set.')
+                        title_str = unquote(
+                            title_str, encoding="iso-8859-1", errors="replace"
+                        )
+                        log.debug(
+                            'Title to find is "{0}", Title in page is "{1}"'.format(
+                                title_str, row.xpath("td[4]")[0].text_content()
+                            )
+                        )
+                        if (
+                            not title_str
+                            == row.xpath("td[4]")[0].text_content().lower()
+                        ):
+                            if prefs["log_level"] in "DEBUG":
+                                log.debug(
+                                    'Title ignored because "exact search" is set.'
+                                )
                             continue  # ignore title
                     else:
-                        log.debug('Title not found in url???')
+                        log.debug("Title not found in url???")
                 # If simple search: Filter authors from title list)
                 # TERM_2=Gene+Wolfe&
-                author = re.search(r'TERM_2=(.+?)&', url)
+                author = re.search(r"TERM_2=(.+?)&", url)
                 if author:
                     author_str = str(author.group(1))
-                    author_str = author_str.replace('+', ' ')
+                    author_str = author_str.replace("+", " ")
                     author_str = author_str.lower()
                     # author_str comes from url, so convert percent encoded characters back
-                    author_str = unquote(author_str, encoding='iso-8859-1', errors='replace')
-                    if prefs['log_level'] in 'DEBUG':
-                        log.debug('author_str={0}'.format(author_str))
-                    if author_str not in row.xpath('td[5]')[0].text_content().lower():
-                        if prefs['log_level'] in 'DEBUG':
-                            log.debug('Author ignored.')
+                    author_str = unquote(
+                        author_str, encoding="iso-8859-1", errors="replace"
+                    )
+                    if prefs["log_level"] in "DEBUG":
+                        log.debug("author_str={0}".format(author_str))
+                    if author_str not in row.xpath("td[5]")[0].text_content().lower():
+                        if prefs["log_level"] in "DEBUG":
+                            log.debug("Author ignored.")
                         continue  # ignore author
 
                 # A url is found, line: https://www.isfdb.org/cgi-bin/title.cgi?59104
                 title_stubs.append(Title.stub_from_simple_search(row, log, prefs))
             else:
                 # Filter languages
-                if row.xpath('td[5]')[0].text_content() not in ('English', get_language_name(prefs['languages'])):
-                    if prefs['log_level'] in 'DEBUG':
-                        log.debug('Language ignored.')
+                if row.xpath("td[5]")[0].text_content() not in (
+                    "English",
+                    get_language_name(prefs["languages"]),
+                ):
+                    if prefs["log_level"] in "DEBUG":
+                        log.debug("Language ignored.")
                     continue  # ignore language
                 title_stubs.append(Title.stub_from_search(row, log, prefs))
 
-        if prefs['log_level'] in 'DEBUG':
+        if prefs["log_level"] in "DEBUG":
             if simple_search_url is None:
-                log.debug("Parsing titles from url %r. Found %d titles." % (url, len(title_stubs)))
+                log.debug(
+                    "Parsing titles from url %r. Found %d titles."
+                    % (url, len(title_stubs))
+                )
             else:
-                log.debug("Parsing titles from url %r. Found %d titles." % (simple_search_url, len(title_stubs)))
-            log.debug('title_stubs={0}'.format(title_stubs))
+                log.debug(
+                    "Parsing titles from url %r. Found %d titles."
+                    % (simple_search_url, len(title_stubs))
+                )
+            log.debug("title_stubs={0}".format(title_stubs))
             # [{'title': 'In the Vault', 'url': 'https://www.isfdb.org/cgi-bin/title.cgi?41896', 'authors': ['H. P. Lovecraft']},
             # {'title': 'In the Vault', 'url': 'https://www.isfdb.org/cgi-bin/title.cgi?2946687', 'authors': ['H. P. Lovecraft']}]
 
@@ -836,18 +986,18 @@ class Record(ISFDBObject):
     @classmethod
     # Which record type (title or publication) is the actual page
     def is_type_of(cls, url, log, prefs):
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('*** Enter Record(ISFDBObject).is_type_of().')
-            log.debug('cls.URL={0}'.format(cls.URL))
-        type =  url.startswith(cls.URL)
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('type={0}'.format(type))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("*** Enter Record(ISFDBObject).is_type_of().")
+            log.debug("cls.URL={0}".format(cls.URL))
+        type = url.startswith(cls.URL)
+        if prefs["log_level"] in "DEBUG":
+            log.debug("type={0}".format(type))
         return type
 
 
 class Publication(Record):
     # URL = 'http://www.isfdb.org/cgi-bin/pl.cgi?'
-    URL = 'https://www.isfdb.org/cgi-bin/pl.cgi?'
+    URL = "https://www.isfdb.org/cgi-bin/pl.cgi?"
 
     @classmethod
     def url_from_id(cls, isfdb_id):
@@ -855,43 +1005,49 @@ class Publication(Record):
 
     @classmethod
     def id_from_url(cls, url):
-        return re.search(r'(\d+)$', url).group(1)
+        return re.search(r"(\d+)$", url).group(1)
 
     @classmethod
     def stub_from_search(cls, row, log, prefs):
 
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('*** Enter Publication.stub_from_search().')
-            log.debug('row={0}'.format(etree.tostring(row)))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("*** Enter Publication.stub_from_search().")
+            log.debug("row={0}".format(etree.tostring(row)))
 
         properties = {}
 
         try:
-            properties["title"] = row.xpath('td[1]/a')[0].text_content()  # If title is linked
-            properties["url"] = row.xpath('td[1]/a/@href')[0]
+            properties["title"] = row.xpath("td[1]/a")[
+                0
+            ].text_content()  # If title is linked
+            properties["url"] = row.xpath("td[1]/a/@href")[0]
         except IndexError:
             try:
-                properties["title"] = row.xpath('td[1]/div/a')[0].text_content()  # If title is in tooltip div
-                properties["url"] = row.xpath('td[1]/div/a/@href')[0]
+                properties["title"] = row.xpath("td[1]/div/a")[
+                    0
+                ].text_content()  # If title is in tooltip div
+                properties["url"] = row.xpath("td[1]/div/a/@href")[0]
             except IndexError:
-                properties["title"] = row.xpath('td[1]')[0].text_content()  # If title is not linked
+                properties["title"] = row.xpath("td[1]")[
+                    0
+                ].text_content()  # If title is not linked
                 properties["url"] = None
 
-        properties["authors"] = [a.text_content() for a in row.xpath('td[3]/a')]
+        properties["authors"] = [a.text_content() for a in row.xpath("td[3]/a")]
         # Display publications in Calibre GUI in ascending order by date
-        properties["pub_year"] = row.xpath('td[2]')[0].text_content().strip()[:4]
+        properties["pub_year"] = row.xpath("td[2]")[0].text_content().strip()[:4]
 
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('properties={0}'.format(properties))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("properties={0}".format(properties))
 
         return properties
 
     @classmethod
     def from_url(cls, browser, url, timeout, log, prefs):
 
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('*** Enter Publication.from_url().')
-            log.debug('url={0}'.format(url))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("*** Enter Publication.from_url().")
+            log.debug("url={0}".format(url))
 
         # To distinguish series_index quality. Authoritative is the contenht of the field "Pub. Series #"
         series_index_is_authoritative = None
@@ -903,11 +1059,17 @@ class Publication(Record):
         # Get rid of tooltips
         try:
             for tooltip in root.xpath('//sup[@class="mouseover"]'):
-                tooltip.getparent().remove(tooltip)  # We grab the parent of the element to call the remove directly on it
-            for tooltip in root.xpath('//span[@class="tooltiptext tooltipnarrow tooltipright"]'):
-                tooltip.getparent().remove(tooltip)  # We grab the parent of the element to call the remove directly on it
+                tooltip.getparent().remove(
+                    tooltip
+                )  # We grab the parent of the element to call the remove directly on it
+            for tooltip in root.xpath(
+                '//span[@class="tooltiptext tooltipnarrow tooltipright"]'
+            ):
+                tooltip.getparent().remove(
+                    tooltip
+                )  # We grab the parent of the element to call the remove directly on it
         except Exception as e:
-            log.debug('Exception ignored while deleting tooltips: {0}'.format(e))
+            log.debug("Exception ignored while deleting tooltips: {0}".format(e))
 
         # Records with a cover image (most pages)
         # //*[@id="content"]/div[1]/table/tr/td[2]/ul
@@ -915,15 +1077,16 @@ class Publication(Record):
         # Records without a cover image (a few pages)
         # //*[@id="content"]/div[1]/ul
         if not detail_nodes:
-            if prefs['log_level'] in 'DEBUG':
-                log.debug('This is a pub page without cover.')
+            if prefs["log_level"] in "DEBUG":
+                log.debug("This is a pub page without cover.")
             detail_nodes = root.xpath(
-                '//div[@id="content"]/div[@class="ContentBox"]/ul/li')  # no table present in records with no image
+                '//div[@id="content"]/div[@class="ContentBox"]/ul/li'
+            )  # no table present in records with no image
             # More than one ContenBox possible!
 
         if not detail_nodes:
-            if prefs['log_level'] in ('DEBUG', 'INFO'):
-                log.debug('Still no content found.')
+            if prefs["log_level"] in ("DEBUG", "INFO"):
+                log.debug("Still no content found.")
 
         # Publication: R. U. R. (Rossum's Universal Robots): A Play in Three Acts and an EpiloguePublication Record # 622668 [Edit] [Edit History]
         # Author: Karel Čapek?
@@ -940,18 +1103,18 @@ class Publication(Record):
         # OCLC/WorldCat: 312705060
 
         for detail_node in detail_nodes:
-            if prefs['log_level'] in 'DEBUG':
-                log.debug('detail_node={0}'.format(etree.tostring(detail_node)))
-            section = detail_node[0].text_content().strip().rstrip(':')
-            if section[:7] == 'Notes: ':  # if accidentally stripped in notes itself
+            if prefs["log_level"] in "DEBUG":
+                log.debug("detail_node={0}".format(etree.tostring(detail_node)))
+            section = detail_node[0].text_content().strip().rstrip(":")
+            if section[:7] == "Notes: ":  # if accidentally stripped in notes itself
                 section = section[:5]
-            if prefs['log_level'] in 'DEBUG':
-                log.debug('section={0}'.format(section))
+            if prefs["log_level"] in "DEBUG":
+                log.debug("section={0}".format(section))
 
-            date_text = ''  # Memorize, to build series index from pubdate, if not expicitly given
+            date_text = ""  # Memorize, to build series index from pubdate, if not expicitly given
 
             try:
-                if section == 'Publication':
+                if section == "Publication":
                     properties["title"] = detail_node[0].tail.strip()
                     if not properties["title"]:
                         # assume an extra span with a transliterated title tooltip
@@ -961,26 +1124,28 @@ class Publication(Record):
                     # Publication: Epic Illustrated, February 1986
                     # Publication: Vargo Statten British Science Fiction Magazine, Vol 1 No 4
 
-                elif section in ('Author', 'Authors', 'Editor', 'Editors'):
+                elif section in ("Author", "Authors", "Editor", "Editors"):
                     properties["authors"] = []
-                    for a in detail_node.xpath('.//a'):
+                    for a in detail_node.xpath(".//a"):
                         author = a.text_content().strip()
-                        if author != 'uncredited':
+                        if author != "uncredited":
                             # For looking up the corresponding title.
                             # We can only use the first author because the search is broken.
                             if "author_string" not in properties:
                                 properties["author_string"] = author  # Why?
-                            if section.startswith('Editor'):
+                            if section.startswith("Editor"):
                                 if prefs["translate_isfdb"]:
-                                    properties["authors"].append(author + _(' (Editor)'))
+                                    properties["authors"].append(
+                                        author + _(" (Editor)")
+                                    )
                                 else:
-                                    properties["authors"].append(author + ' (Editor)')
+                                    properties["authors"].append(author + " (Editor)")
                             else:
                                 properties["authors"].append(author)
 
-                elif section == 'Date':
+                elif section == "Date":
                     date_text = detail_node[0].tail.strip()
-                    if date_text in ['date unknown', 'unknown', 'unpublished']:
+                    if date_text in ["date unknown", "unknown", "unpublished"]:
                         properties["pubdate"] = None  # Warning ignored
                     else:
                         # We use this instead of strptime to handle dummy days and months
@@ -992,18 +1157,24 @@ class Publication(Record):
                         # (if not, datetime goes back to the last month and, in january, even to december last year)
                         # ToDo: set hour to publisher's timezone?
                         # properties["pubdate"] = datetime.datetime(year, month, day)
-                        properties["pubdate"] = datetime.datetime(year, month, day, 2, 0, 0)
+                        properties["pubdate"] = datetime.datetime(
+                            year, month, day, 2, 0, 0
+                        )
 
-                elif section == 'Publisher':
+                elif section == "Publisher":
                     try:
-                        properties["publisher"] = detail_node.xpath('a')[0].text_content().strip()
+                        properties["publisher"] = (
+                            detail_node.xpath("a")[0].text_content().strip()
+                        )
                     except IndexError:
-                        properties["publisher"] = detail_node.xpath('div/a')[0].text_content().strip()  # toolötip div
+                        properties["publisher"] = (
+                            detail_node.xpath("div/a")[0].text_content().strip()
+                        )  # toolötip div
 
-                elif section == 'Format':
+                elif section == "Format":
                     properties["format"] = detail_node[0].tail.strip()
 
-                elif section == 'Type':
+                elif section == "Type":
                     properties["type"] = detail_node[0].tail.strip()
                     # Copy publication type to tags
                     if "tags" not in properties:
@@ -1017,17 +1188,25 @@ class Publication(Record):
                     except KeyError:
                         pass
 
-                elif section == 'Cover':
-                    properties["cover"] = ' '.join([x for x in detail_node.itertext()]).strip().replace('\n', '')
-                    properties["cover"] = properties["cover"].replace('  ', ' ')
+                elif section == "Cover":
+                    properties["cover"] = (
+                        " ".join([x for x in detail_node.itertext()])
+                        .strip()
+                        .replace("\n", "")
+                    )
+                    properties["cover"] = properties["cover"].replace("  ", " ")
                     if prefs["translate_isfdb"]:
-                        properties["cover"] = properties["cover"].replace('variant of', _('variant of'))
-                        properties["cover"] = properties["cover"].replace(' by ', _(' by '))
+                        properties["cover"] = properties["cover"].replace(
+                            "variant of", _("variant of")
+                        )
+                        properties["cover"] = properties["cover"].replace(
+                            " by ", _(" by ")
+                        )
 
-                elif section == 'Pub. Series':
+                elif section == "Pub. Series":
                     # If series is a url, open series page and search for "Sub-series of:"
                     # https://www.isfdb.org/cgi-bin/pe.cgi?45706
-                    properties["series"] = ''
+                    properties["series"] = ""
                     properties["series_index"] = 0.0
                     # if ISFDB4.loc_prefs["combine_series"]:
                     # url = detail_node[1].xpath('//a[contains(text(), "' + detail_node[1].text_content().strip() + '")]/@href')  # get all urs
@@ -1035,84 +1214,125 @@ class Publication(Record):
                         # In most cases, the series name is a link
                         # b'<li>\n  <b>Pub. Series:</b> <a href="https://www.isfdb.org/cgi-bin/pubseries.cgi?9408" dir="ltr">World\'s Best Science Fiction</a>\n</li>'
                         # //*[@id="content"]/div[1]/table/tbody/tr/td[2]/ul/li[6]/a
-                        series_url = detail_node.xpath('./a/@href')[0]
+                        series_url = detail_node.xpath("./a/@href")[0]
                     except IndexError:
                         # url is embedded in a tooltip div:  //*[@id="content"]/div[1]/ul/li[5]/div/a
-                        series_url = detail_node.xpath('./div/a/@href')[0]
-                    if prefs['log_level'] in 'DEBUG':
-                        log.debug('series_url={0}'.format(series_url))
+                        series_url = detail_node.xpath("./div/a/@href")[0]
+                    if prefs["log_level"] in "DEBUG":
+                        log.debug("series_url={0}".format(series_url))
                     # Scan series record
-                    properties["series"] = Series.from_url(browser, series_url, timeout, log, prefs)
-                    if properties["series"] == '':
-                        properties["series"] = detail_node.xpath('a')[0].text_content().strip()  # Fallback
+                    properties["series"] = Series.from_url(
+                        browser, series_url, timeout, log, prefs
+                    )
+                    if properties["series"] == "":
+                        properties["series"] = (
+                            detail_node.xpath("a")[0].text_content().strip()
+                        )  # Fallback
 
-                elif section == 'Pub. Series #':
-                    if properties["series"] != '':
-                        if prefs['log_level'] in ('DEBUG', 'INFO'):
+                elif section == "Pub. Series #":
+                    if properties["series"] != "":
+                        if prefs["log_level"] in ("DEBUG", "INFO"):
                             log.info(
-                                _('Series is: "{0}". Now searching series index in "{1}"'.format(properties["series"],
-                                                                                                 detail_node[
-                                                                                                     0].tail.strip())))
-                        if detail_node[0].tail.strip() == '':
+                                _(
+                                    'Series is: "{0}". Now searching series index in "{1}"'.format(
+                                        properties["series"],
+                                        detail_node[0].tail.strip(),
+                                    )
+                                )
+                            )
+                        if detail_node[0].tail.strip() == "":
                             properties["series_index"] = 0.0
-                        elif '/' in detail_node[0].tail:
+                        elif "/" in detail_node[0].tail:
                             # Calibre accepts only float format compatible numbers, not e. g. "61/62"
-                            series_index_list = detail_node[0].tail.split('/')
-                            properties["series_index"] = int("".join(filter(str.isdigit, series_index_list[0])).strip())
-                            properties["series_number_notes"] = \
-                                _("Reported number was {0} and was reduced to a Calibre compatible format.<br />"). \
-                                    format(detail_node[0].tail)
+                            series_index_list = detail_node[0].tail.split("/")
+                            properties["series_index"] = int(
+                                "".join(
+                                    filter(str.isdigit, series_index_list[0])
+                                ).strip()
+                            )
+                            properties["series_number_notes"] = _(
+                                "Reported number was {0} and was reduced to a Calibre compatible format.<br />"
+                            ).format(detail_node[0].tail)
                             series_index_is_authoritative = True
                         elif is_roman_numeral(detail_node[0].tail.strip()):
-                            if prefs['log_level'] in 'DEBUG':
-                                log.debug('Roman literal found:{0}'.format(detail_node[0].tail.strip()))
+                            if prefs["log_level"] in "DEBUG":
+                                log.debug(
+                                    "Roman literal found:{0}".format(
+                                        detail_node[0].tail.strip()
+                                    )
+                                )
                             # Calibre accepts only float format compatible arabic numbers, not roman numerals e. g. "IV"
                             # https://www.isfdb.org/cgi-bin/pl.cgi?243949
-                            properties["series_index"] = roman_to_int(detail_node[0].tail.strip())
-                            properties["series_number_notes"] = \
-                                _("Reported number was the roman numeral {0} and was converted to a Calibre compatible format.<br />"). \
-                                    format(detail_node[0].tail.strip())
+                            properties["series_index"] = roman_to_int(
+                                detail_node[0].tail.strip()
+                            )
+                            properties["series_number_notes"] = _(
+                                "Reported number was the roman numeral {0} and was converted to a Calibre compatible format.<br />"
+                            ).format(detail_node[0].tail.strip())
                             series_index_is_authoritative = True
                         else:
                             try:
                                 properties["series_index"] = int(
-                                    "".join(filter(str.isdigit, detail_node[0].tail.strip())))
+                                    "".join(
+                                        filter(str.isdigit, detail_node[0].tail.strip())
+                                    )
+                                )
                                 series_index_is_authoritative = True
                             except ValueError:
-                                properties["series_number_notes"] = \
-                                    _("Could not convert {0} to a Calibre compatible format.<br />"). \
-                                        format(detail_node[0].tail.strip())
+                                properties["series_number_notes"] = _(
+                                    "Could not convert {0} to a Calibre compatible format.<br />"
+                                ).format(detail_node[0].tail.strip())
                                 properties["series_index"] = 0.0
                         # log.info('properties["series_index"]={0}'.format(properties["series_index"]))
 
-                elif section == 'Webpages':
+                elif section == "Webpages":
                     # If we do not have an series number yet, try the webpage for such information
                     # Note: There are possible multiple pages!
                     if not series_index_is_authoritative:
-                        webpage_name = webpage_url = ''
-                        webpage_name = detail_node.text_content().lstrip('Webpages:').strip()
+                        webpage_name = webpage_url = ""
+                        webpage_name = (
+                            detail_node.text_content().lstrip("Webpages:").strip()
+                        )
                         try:
-                            webpage_url = detail_node.xpath('./a/@href')[0]
+                            webpage_url = detail_node.xpath("./a/@href")[0]
                         except IndexError:
                             # url is embedded in a tooltip div:  //*[@id="content"]/div[1]/ul/li[5]/div/a
-                            webpage_url = detail_node.xpath('./div/a/@href')[0]
-                        if prefs['log_level'] in ['DEBUG']:
-                            log.debug('webpage_name={0}, webpage_url={1}'.format(webpage_name, webpage_url))
-                        if webpage_name == 'archive.org':
+                            webpage_url = detail_node.xpath("./div/a/@href")[0]
+                        if prefs["log_level"] in ["DEBUG"]:
+                            log.debug(
+                                "webpage_name={0}, webpage_url={1}".format(
+                                    webpage_name, webpage_url
+                                )
+                            )
+                        if webpage_name == "archive.org":
                             # Get the archive page
                             try:
-                                webpage_response = browser.open_novisit(webpage_url, timeout=timeout)
+                                webpage_response = browser.open_novisit(
+                                    webpage_url, timeout=timeout
+                                )
                                 webpage_raw = webpage_response.read()
-                                webpage_root = fromstring(clean_ascii_chars(webpage_raw))
-                                identifier_info = webpage_root.xpath('//span[@itemprop="identifier"]/text()')[0]
+                                webpage_root = fromstring(
+                                    clean_ascii_chars(webpage_raw)
+                                )
+                                identifier_info = webpage_root.xpath(
+                                    '//span[@itemprop="identifier"]/text()'
+                                )[0]
                                 if identifier_info is not None:
                                     # Examples:
                                     # Science_Fiction_Adventure_Classics_03_1967-Winter
                                     # Amazing_Stories_Quarterly_v03n01_1930-Winter_Missing_ifcibcbc
                                     # Amazing_Stories_Quarterly_v04n02_1931-Spring_frankenscan
-                                    if prefs['log_level'] in ['DEBUG']:
-                                        log.debug('identifier_info={0}'.format(identifier_info))
-                                    match = re.search(r'.*_v([0-9]+)n([0-9]+)_.*', identifier_info, re.IGNORECASE)
+                                    if prefs["log_level"] in ["DEBUG"]:
+                                        log.debug(
+                                            "identifier_info={0}".format(
+                                                identifier_info
+                                            )
+                                        )
+                                    match = re.search(
+                                        r".*_v([0-9]+)n([0-9]+)_.*",
+                                        identifier_info,
+                                        re.IGNORECASE,
+                                    )
                                     if match:
                                         volume = number = issue_number = 0
                                         if match.group(1):
@@ -1120,37 +1340,67 @@ class Publication(Record):
                                             volume = int(str(match.group(1)))
                                         if match.group(2):
                                             number = int(str(match.group(2)))
-                                        if prefs['log_level'] in ['DEBUG']:
-                                            log.debug('series_index_options={0}'.format(prefs["series_index_options"]))
-                                            log.debug('volume={0}, number={1}'.format(volume, number))
-                                        if prefs["series_index_options"] == 'vol_and_no':
+                                        if prefs["log_level"] in ["DEBUG"]:
+                                            log.debug(
+                                                "series_index_options={0}".format(
+                                                    prefs["series_index_options"]
+                                                )
+                                            )
+                                            log.debug(
+                                                "volume={0}, number={1}".format(
+                                                    volume, number
+                                                )
+                                            )
+                                        if (
+                                            prefs["series_index_options"]
+                                            == "vol_and_no"
+                                        ):
                                             if number < 100:
-                                                properties["series_index"] = float(volume) + float(number) * .01
+                                                properties["series_index"] = (
+                                                    float(volume) + float(number) * 0.01
+                                                )
                                             else:
-                                                properties["series_index"] = float(volume) + 0.99
-                                        elif prefs["series_index_options"] == 'issue_no_only':
+                                                properties["series_index"] = (
+                                                    float(volume) + 0.99
+                                                )
+                                        elif (
+                                            prefs["series_index_options"]
+                                            == "issue_no_only"
+                                        ):
                                             pass
                                         else:
-                                            log.debug('Unknown series index option.')
-                                        if prefs['log_level'] in ['DEBUG', 'INFO']:
-                                            log.debug('Build Series Index from archive.org webpage={0}'.
-                                                      format(properties["series_index"]))
+                                            log.debug("Unknown series index option.")
+                                        if prefs["log_level"] in ["DEBUG", "INFO"]:
+                                            log.debug(
+                                                "Build Series Index from archive.org webpage={0}".format(
+                                                    properties["series_index"]
+                                                )
+                                            )
                                 else:
-                                    log.debug('Could not get an identifier info from archive.org')
+                                    log.debug(
+                                        "Could not get an identifier info from archive.org"
+                                    )
                             except Exception as e:
-                                log.debug('Failed to get series index from archive.org webpage={0} with error={1}'.
-                                          format(webpage_url, e))
+                                log.debug(
+                                    "Failed to get series index from archive.org webpage={0} with error={1}".format(
+                                        webpage_url, e
+                                    )
+                                )
                         else:
-                            if prefs['log_level'] in ['DEBUG']:
-                                log.debug('Webpage link ignored.')
+                            if prefs["log_level"] in ["DEBUG"]:
+                                log.debug("Webpage link ignored.")
 
-                elif section == 'Notes':
+                elif section == "Notes":
                     # notes_nodes = detail_node.xpath('./div[@class="notes"]/ul')  # /li
                     # notes = detail_node[0].tail.strip()
-                    notes = ' '.join([x for x in detail_node.itertext()]).strip().replace('\n', '')
-                    if prefs['log_level'] in ['DEBUG']:
-                        log.debug('notes={0}'.format(notes))
-                    if notes != '':
+                    notes = (
+                        " ".join([x for x in detail_node.itertext()])
+                        .strip()
+                        .replace("\n", "")
+                    )
+                    if prefs["log_level"] in ["DEBUG"]:
+                        log.debug("notes={0}".format(notes))
+                    if notes != "":
                         notes_nodes = detail_node.xpath('./div[@class="notes"]')
                         # Notes:
                         # or
@@ -1190,145 +1440,233 @@ class Publication(Record):
                             # Volume 1, Number 1
                             # or
                             # May 2008 ←Jun. 2008→ Jul.-Aug. 2008 Vol CXXVIII No. 6
-                            match = re.search(r'.*(?:Volume |Vol\. |Vol |Vol\.)([0-9]+|[MDCLXVI]+).*'
-                                              r'(?:No\.|No\.[ ]+|No[ ]+|Number[ ]+)([0-9]+).*(?: Issue | #)?([0-9]+)?.*',
-                                              notes, re.IGNORECASE)
+                            match = re.search(
+                                r".*(?:Volume |Vol\. |Vol |Vol\.)([0-9]+|[MDCLXVI]+).*"
+                                r"(?:No\.|No\.[ ]+|No[ ]+|Number[ ]+)([0-9]+).*(?: Issue | #)?([0-9]+)?.*",
+                                notes,
+                                re.IGNORECASE,
+                            )
                             if match:
                                 volume = number = issue_number = 0
                                 if match.group(1):
                                     # Check if volume is indicated in roman digits
                                     volume_text = str(match.group(1))
                                     if is_roman_numeral(volume_text):
-                                        if prefs['log_level'] in 'DEBUG':
-                                            log.debug('Roman literal found:{0}'.format(volume_text))
+                                        if prefs["log_level"] in "DEBUG":
+                                            log.debug(
+                                                "Roman literal found:{0}".format(
+                                                    volume_text
+                                                )
+                                            )
                                         # Calibre accepts only float format compatible arabic numbers,
                                         # not roman numerals e. g. "IV"
                                         # https://www.isfdb.org/cgi-bin/pl.cgi?243949
                                         volume = roman_to_int(volume_text)
-                                        properties["series_number_notes"] = \
-                                            _("Reported volume was the roman numeral {0} and was converted to "
-                                              "a Calibre compatible format.<br />").format(volume_text)
+                                        properties["series_number_notes"] = _(
+                                            "Reported volume was the roman numeral {0} and was converted to "
+                                            "a Calibre compatible format.<br />"
+                                        ).format(volume_text)
                                     else:
                                         volume = int(str(volume_text))
                                 if match.group(2):
                                     number = int(str(match.group(2)))
                                 if match.group(3) and match.group(4):
                                     issue_number = int(str(match.group(4)))
-                                    prefs["series_index_options"] = 'issue_no_only'
+                                    prefs["series_index_options"] = "issue_no_only"
                                 # if match.group(5):
                                 #     volume = int(str(match.group(5)))
-                                if prefs['log_level'] in ['DEBUG']:
-                                    log.debug('series_index_options={0}'.format(prefs["series_index_options"]))
-                                    log.debug('volume={0}, number={1}, issue_number={2}'.
-                                              format(volume, number, issue_number))
-                                if prefs["series_index_options"] == 'vol_and_no':
+                                if prefs["log_level"] in ["DEBUG"]:
+                                    log.debug(
+                                        "series_index_options={0}".format(
+                                            prefs["series_index_options"]
+                                        )
+                                    )
+                                    log.debug(
+                                        "volume={0}, number={1}, issue_number={2}".format(
+                                            volume, number, issue_number
+                                        )
+                                    )
+                                if prefs["series_index_options"] == "vol_and_no":
                                     if number < 100:
-                                        properties["series_index"] = float(volume) + float(number) * .01
+                                        properties["series_index"] = (
+                                            float(volume) + float(number) * 0.01
+                                        )
                                     else:
-                                        properties["series_index"] = float(volume) + 0.99
-                                elif prefs["series_index_options"] == 'issue_no_only':
-                                    properties["series_index"] = float(issue_number) + .0
+                                        properties["series_index"] = (
+                                            float(volume) + 0.99
+                                        )
+                                elif prefs["series_index_options"] == "issue_no_only":
+                                    properties["series_index"] = (
+                                        float(issue_number) + 0.0
+                                    )
                                 else:
-                                    log.debug('Unknown series index option.')
-                                if prefs['log_level'] in ['DEBUG', 'INFO']:
-                                    log.debug('Build Series Index from Notes={0}'.format(properties["series_index"]))
+                                    log.debug("Unknown series index option.")
+                                if prefs["log_level"] in ["DEBUG", "INFO"]:
+                                    log.debug(
+                                        "Build Series Index from Notes={0}".format(
+                                            properties["series_index"]
+                                        )
+                                    )
                             else:
-                                if prefs['log_level'] in ['DEBUG']:
-                                    log.debug('Notes string not matched by pattern.')
-
+                                if prefs["log_level"] in ["DEBUG"]:
+                                    log.debug("Notes string not matched by pattern.")
 
                             # Is there a more precise pub date in Notes when only year is given in pub date?
                             # Summer 1950 (May-July), Vol 4., No. 11.
                             month_number_from_season = 1
                             month_number_from_monthname = 1
                             month_number = 1
-                            match = re.search(r'(Spring|Summer|Autumn|Winter)', notes, re.IGNORECASE)
+                            match = re.search(
+                                r"(Spring|Summer|Autumn|Winter)", notes, re.IGNORECASE
+                            )
                             if match:
                                 if match.group(1):
                                     season_name = str(match.group(1))
-                                    season_names = ['Spring', 'Summer' , 'Autumn', 'Winter']
+                                    season_names = [
+                                        "Spring",
+                                        "Summer",
+                                        "Autumn",
+                                        "Winter",
+                                    ]
                                     season_begins = [2, 5, 8, 11]
                                     season_number = season_names.index(season_name)
-                                    month_number_from_season = season_begins[season_number]
-                                    if prefs['log_level'] in 'DEBUG':
-                                        log.debug('month_number_from_season={0}'.format(month_number_from_season))
-                            match = re.search(r'\((Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec).*-.*\)', notes, re.IGNORECASE)
+                                    month_number_from_season = season_begins[
+                                        season_number
+                                    ]
+                                    if prefs["log_level"] in "DEBUG":
+                                        log.debug(
+                                            "month_number_from_season={0}".format(
+                                                month_number_from_season
+                                            )
+                                        )
+                            match = re.search(
+                                r"\((Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec).*-.*\)",
+                                notes,
+                                re.IGNORECASE,
+                            )
                             if match:
                                 if match.group(1):
                                     month_name = str(match.group(1))
                                     # Does not work with non-english locale!
                                     # month_number = datetime.datetime.strptime(month_name, '%B').month
-                                    month_names = \
-                                        ['Jan', 'Feb' , 'Mar', 'Apr', 'May', 'Jun',
-                                         'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-                                    month_number_from_monthname = month_names.index(month_name) + 1
-                                    if prefs['log_level'] in 'DEBUG':
-                                        log.debug('month_number_from_monthname={0}'.format(month_number_from_monthname))
+                                    month_names = [
+                                        "Jan",
+                                        "Feb",
+                                        "Mar",
+                                        "Apr",
+                                        "May",
+                                        "Jun",
+                                        "Jul",
+                                        "Aug",
+                                        "Sep",
+                                        "Oct",
+                                        "Nov",
+                                        "Dec",
+                                    ]
+                                    month_number_from_monthname = (
+                                        month_names.index(month_name) + 1
+                                    )
+                                    if prefs["log_level"] in "DEBUG":
+                                        log.debug(
+                                            "month_number_from_monthname={0}".format(
+                                                month_number_from_monthname
+                                            )
+                                        )
                             if month_number_from_season <= month_number_from_monthname:
                                 month_number = month_number_from_monthname
                             else:
                                 month_number = month_number_from_season
-                            if properties["pubdate"].month == 1 and properties["pubdate"].day == 1:
-                                properties["pubdate"] = (
-                                    datetime.datetime(properties["pubdate"].year,
-                                                      month_number,
-                                                      1,
-                                                      2, 0, 0))
+                            if (
+                                properties["pubdate"].month == 1
+                                and properties["pubdate"].day == 1
+                            ):
+                                properties["pubdate"] = datetime.datetime(
+                                    properties["pubdate"].year, month_number, 1, 2, 0, 0
+                                )
 
                             # Output Notes as is (including html)
                             if "notes" not in properties:
-                                properties["notes"] = sanitize_comments_html(tostring(notes_nodes[0], method='html'))
+                                properties["notes"] = sanitize_comments_html(
+                                    tostring(notes_nodes[0], method="html")
+                                )
                             else:
-                                properties["notes"] = properties["notes"] + '<br />' + \
-                                                      sanitize_comments_html(tostring(notes_nodes[0], method='html'))
+                                properties["notes"] = (
+                                    properties["notes"]
+                                    + "<br />"
+                                    + sanitize_comments_html(
+                                        tostring(notes_nodes[0], method="html")
+                                    )
+                                )
                             if prefs["translate_isfdb"]:
                                 for term in TRANSLATION_REPLACINGS:
                                     # log.debug('term, msgtext='.format(term, _(term)))
-                                    properties["notes"] = properties["notes"].replace(term, _(term))
-                            if prefs['log_level'] in 'DEBUG':
-                                log.debug('properties["notes"]={0}'.format(properties["notes"]))
+                                    properties["notes"] = properties["notes"].replace(
+                                        term, _(term)
+                                    )
+                            if prefs["log_level"] in "DEBUG":
+                                log.debug(
+                                    'properties["notes"]={0}'.format(
+                                        properties["notes"]
+                                    )
+                                )
 
-                elif section == 'ISBN':
+                elif section == "ISBN":
                     # Possible formats:
                     # 978-1-368-02083-1 [1-368-02083-6] (ISBN-13 first) or
                     # 0-451-14894-0 [978-0-451-14894-0] (ISBN-10 first
                     # From urls_from_identifiers(): isbn = identifiers.get('isbn', None)
-                    isbn1 = ''
-                    isbn2 = ''
-                    if 'identifiers' not in properties:
+                    isbn1 = ""
+                    isbn2 = ""
+                    if "identifiers" not in properties:
                         properties["identifiers"] = {}
                     # detail_node=b'<li><b>ISBN:</b> 978-1-61287-013-7 [<small>1-61287-013-9</small>]\n</li>'
-                    if prefs['log_level'] in 'DEBUG':
-                        log.debug('detail_node.text_content()={0}'.format(detail_node.text_content()))
-                    match = re.search(r'([0-9X\-]+) \[([0-9X\-]+)\]', detail_node.text_content(), re.IGNORECASE)
+                    if prefs["log_level"] in "DEBUG":
+                        log.debug(
+                            "detail_node.text_content()={0}".format(
+                                detail_node.text_content()
+                            )
+                        )
+                    match = re.search(
+                        r"([0-9X\-]+) \[([0-9X\-]+)\]",
+                        detail_node.text_content(),
+                        re.IGNORECASE,
+                    )
                     if match:
                         if match.group(1):
                             isbn1 = match.group(1)
-                            isbn1 = ''.join([c.replace('-', '') for c in isbn1])  # Get rid of dashes
+                            isbn1 = "".join(
+                                [c.replace("-", "") for c in isbn1]
+                            )  # Get rid of dashes
                         if match.group(2):
                             isbn2 = match.group(2)
-                            isbn2 = ''.join([c.replace('-', '') for c in isbn2])  # Get rid of dashes
+                            isbn2 = "".join(
+                                [c.replace("-", "") for c in isbn2]
+                            )  # Get rid of dashes
                         # Fetch both ISBN 10 and 13
                         if len(isbn1) == 10:
-                            properties["identifiers"].update({'isbn-10': isbn1})
+                            properties["identifiers"].update({"isbn-10": isbn1})
                         elif len(isbn1) == 13:
-                            properties["identifiers"].update({'isbn-13': isbn1})
+                            properties["identifiers"].update({"isbn-13": isbn1})
                         if len(isbn2) == 10:
-                            properties["identifiers"].update({'isbn-10': isbn2})
+                            properties["identifiers"].update({"isbn-10": isbn2})
                         elif len(isbn2) == 13:
-                            properties["identifiers"].update({'isbn-13': isbn2})
+                            properties["identifiers"].update({"isbn-13": isbn2})
                         # Preferred ISBN is ISBN-13
                         if len(isbn1) > 0 and len(isbn1) > len(isbn2):
-                            properties["identifiers"].update({'isbn': isbn1})
+                            properties["identifiers"].update({"isbn": isbn1})
                         if len(isbn2) > 0 and len(isbn2) > len(isbn1):
-                            properties["identifiers"].update({'isbn': isbn2})
-                        if prefs['log_level'] in 'DEBUG':
-                            log.debug('properties["identifiers"]={0}'.format(properties["identifiers"]))
+                            properties["identifiers"].update({"isbn": isbn2})
+                        if prefs["log_level"] in "DEBUG":
+                            log.debug(
+                                'properties["identifiers"]={0}'.format(
+                                    properties["identifiers"]
+                                )
+                            )
                     else:
-                        if prefs['log_level'] in 'DEBUG':
-                            log.debug('No ISBN found.')
+                        if prefs["log_level"] in "DEBUG":
+                            log.debug("No ISBN found.")
 
-                elif section == 'External IDs':
+                elif section == "External IDs":
                     # <li>
                     #   <b>External IDs:</b>
                     #   <ul class="noindent">
@@ -1336,100 +1674,143 @@ class Publication(Record):
                     # <li> <abbr class="template" title="Robert Reginald. Science Fiction and Fantasy Literature, 1975-1991: A Bibliography of Science Fiction, Fantasy, and Horror Fiction Books and Nonfiction Monographs. Gale Research Inc., 1992, 1512 p.">Reginald-3</abbr>: 15985</li>
                     # </ul>
                     # </li>
-                    if 'identifiers' not in properties:
+                    if "identifiers" not in properties:
                         properties["identifiers"] = {}
-                    external_id_nodes = detail_node.xpath('ul/li')
-                    for external_id_node in external_id_nodes:  # walk thru external id(s)
-                        if prefs['log_level'] in 'DEBUG':
-                            log.debug('external_id_node={0}'.format(etree.tostring(external_id_node)))
+                    external_id_nodes = detail_node.xpath("ul/li")
+                    for (
+                        external_id_node
+                    ) in external_id_nodes:  # walk thru external id(s)
+                        if prefs["log_level"] in "DEBUG":
+                            log.debug(
+                                "external_id_node={0}".format(
+                                    etree.tostring(external_id_node)
+                                )
+                            )
                             # b'<li>
                             # <abbr class="template" title="Goodreads social cataloging site">Goodreads</abbr>:
                             # <a href="https://www.goodreads.com/book/show/27598449" target="_blank">27598449</a>\n
                             # </li>'
-                        catalog_name = external_id_node.xpath('./abbr/text()')
-                        catalog_link = external_id_node.xpath('./a/@href')
-                        if prefs['log_level'] in 'DEBUG':
-                            log.debug('catalog_name={0}'.format(catalog_name))
-                            log.debug('catalog_link={0}'.format(catalog_link))
+                        catalog_name = external_id_node.xpath("./abbr/text()")
+                        catalog_link = external_id_node.xpath("./a/@href")
+                        if prefs["log_level"] in "DEBUG":
+                            log.debug("catalog_name={0}".format(catalog_name))
+                            log.debug("catalog_link={0}".format(catalog_link))
                         if len(catalog_link) == 0:  # Catalog number without link
-                            if prefs['log_level'] in 'DEBUG':
-                                log.debug('catalog number is not linked.')
-                            catalog_number = external_id_node.xpath('./text()[normalize-space()]')
+                            if prefs["log_level"] in "DEBUG":
+                                log.debug("catalog number is not linked.")
+                            catalog_number = external_id_node.xpath(
+                                "./text()[normalize-space()]"
+                            )
                             # catalog_number=[' ', ': 15985\n  ']
                             catalog_number = [catalog_number[0][2:].strip()]
-                            catalog_link = ['']  # To make it clear
+                            catalog_link = [""]  # To make it clear
                         elif len(catalog_link) == 1:  # Single catalog number with link:
-                            catalog_number = external_id_node.xpath('./a/text()')
+                            catalog_number = external_id_node.xpath("./a/text()")
                         else:  # catalog number with more than one link
-                            if catalog_name[0] == 'ASIN':
+                            if catalog_name[0] == "ASIN":
                                 # One link per national website. The list of country abbreviations is in catalog_number
                                 # ['AU', 'BR', 'CA', 'CN', 'DE', 'ES', 'FR', 'IN', 'IT', 'JP', 'MX', 'NL', 'TR', 'UAE', 'UK', 'US']
                                 # The list of corresponding links is in catalog_link:
                                 # ['https://www.amazon.com.au/dp/B00PUKJ5TC', 'https://www.amazon.com.br/dp/B00PUKJ5TC', 'https://www.amazon.ca/dp/B00PUKJ5TC', 'https://www.amazon.cn/dp/B00PUKJ5TC', 'https://www.amazon.de/dp/B00PUKJ5TC', 'https://www.amazon.es/dp/B00PUKJ5TC', 'https://www.amazon.fr/dp/B00PUKJ5TC', 'https://www.amazon.in/dp/B00PUKJ5TC', 'https://www.amazon.it/dp/B00PUKJ5TC', 'https://www.amazon.co.jp/dp/B00PUKJ5TC', 'https://www.amazon.com.mx/dp/B00PUKJ5TC', 'https://www.amazon.nl/dp/B00PUKJ5TC', 'https://www.amazon.com.tr/dp/B00PUKJ5TC', 'https://www.amazon.ae/dp/B00PUKJ5TC', 'https://www.amazon.co.uk/dp/B00PUKJ5TC?ie=UTF8&tag=isfdb-21', 'https://www.amazon.com/dp/B00PUKJ5TC?ie=UTF8&tag=isfdb-20&linkCode=as2&camp=1789&creative=9325']
-                                catalog_countries = external_id_node.xpath('./a/text()')  # Get the country list
-                                if prefs['log_level'] in 'DEBUG':
-                                    log.debug('catalog_countries={0}'.format(catalog_countries))
+                                catalog_countries = external_id_node.xpath(
+                                    "./a/text()"
+                                )  # Get the country list
+                                if prefs["log_level"] in "DEBUG":
+                                    log.debug(
+                                        "catalog_countries={0}".format(
+                                            catalog_countries
+                                        )
+                                    )
                                 catalog_number = [
-                                    catalog_link[0][-10:]]  # Extract the ASIN (always) 10 chars) from link
+                                    catalog_link[0][-10:]
+                                ]  # Extract the ASIN (always) 10 chars) from link
                                 # Choose the appropriate link depending on user language
                                 catalog_link_full = catalog_link
-                                catalog_link = ['']
+                                catalog_link = [""]
                                 country_no = catalog_countries.index(LOCALE_COUNTRY)
-                                if prefs['log_level'] in 'DEBUG':
-                                    log.debug('LOCALE_COUNTRY={0}, country_no={1}'.format(LOCALE_COUNTRY, country_no))
+                                if prefs["log_level"] in "DEBUG":
+                                    log.debug(
+                                        "LOCALE_COUNTRY={0}, country_no={1}".format(
+                                            LOCALE_COUNTRY, country_no
+                                        )
+                                    )
                                 try:
                                     catalog_link = [catalog_link_full[country_no]]
                                 except ValueError:
                                     try:
-                                        country_no = catalog_countries.index('US')
+                                        country_no = catalog_countries.index("US")
                                         catalog_link = [catalog_link_full[country_no]]
                                     except ValueError:
-                                        catalog_link = [catalog_link_full[0]]  # Take the first one
+                                        catalog_link = [
+                                            catalog_link_full[0]
+                                        ]  # Take the first one
                             else:
-                                catalog_number = external_id_node.xpath('./a/text()')
-                                catalog_link = ['']
-                                log.debug(_('Unknown catalog with more than one link.'))
-                        if prefs['log_level'] in 'DEBUG':
-                            log.debug('catalog_name={0}'.format(catalog_name))
-                            log.debug('catalog_number={0}'.format(catalog_number))
-                            log.debug('catalog_link={0}'.format(catalog_link))
+                                catalog_number = external_id_node.xpath("./a/text()")
+                                catalog_link = [""]
+                                log.debug(_("Unknown catalog with more than one link."))
+                        if prefs["log_level"] in "DEBUG":
+                            log.debug("catalog_name={0}".format(catalog_name))
+                            log.debug("catalog_number={0}".format(catalog_number))
+                            log.debug("catalog_link={0}".format(catalog_link))
                         if catalog_name[0] in EXTERNAL_IDS:
                             calibre_identifier_type = EXTERNAL_IDS[catalog_name[0]][0]
                         else:
                             calibre_identifier_type = catalog_name[0].lower()
-                            for char in [' ', '/', '.']:
+                            for char in [" ", "/", "."]:
                                 # replace() "returns" an altered string
-                                calibre_identifier_type = calibre_identifier_type.replace(char, "-")
-                        if prefs['log_level'] in 'DEBUG':
-                            log.debug('calibre_identifier_type={0}'.format(calibre_identifier_type))
+                                calibre_identifier_type = (
+                                    calibre_identifier_type.replace(char, "-")
+                                )
+                        if prefs["log_level"] in "DEBUG":
+                            log.debug(
+                                "calibre_identifier_type={0}".format(
+                                    calibre_identifier_type
+                                )
+                            )
                         # ToDo: save link for calibre book info window (direct access to metadata source)?
-                        if prefs['log_level'] in 'DEBUG':
-                            log.debug('catalog_number={0}'.format(catalog_number))
-                        properties["identifiers"].update({calibre_identifier_type: catalog_number[0]})
-                        if prefs['log_level'] in 'DEBUG':
-                            log.debug('properties["identifiers"]={0}'.format(properties["identifiers"]))
+                        if prefs["log_level"] in "DEBUG":
+                            log.debug("catalog_number={0}".format(catalog_number))
+                        properties["identifiers"].update(
+                            {calibre_identifier_type: catalog_number[0]}
+                        )
+                        if prefs["log_level"] in "DEBUG":
+                            log.debug(
+                                'properties["identifiers"]={0}'.format(
+                                    properties["identifiers"]
+                                )
+                            )
 
-                elif section == 'Catalog ID':
+                elif section == "Catalog ID":
                     properties["isfdb-catalog"] = detail_node[0].tail.strip()
 
-                elif section == 'Container Title':
-                    title_url = detail_nodes[9].xpath('a')[0].attrib.get('href')
+                elif section == "Container Title":
+                    title_url = detail_nodes[9].xpath("a")[0].attrib.get("href")
                     properties["isfdb-title"] = Title.id_from_url(title_url)
 
                 # If we have a series name, but no series index, try to build the index from the pub date
                 if "series" in properties:
-                    if properties["series"] != '':
+                    if properties["series"] != "":
                         if properties["series_index"] == 0.0:
-                            if date_text != '':
-                                year, month, day = [int(p) for p in date_text.split("-")]
-                                properties["series_index"] = float(year) + float(month) * 0.01
-                                if prefs['log_level'] in 'DEBUG':
-                                    log.debug('properties["series_index"], taken from pubdate={0}'
-                                              .format(properties["series_index"]))
+                            if date_text != "":
+                                year, month, day = [
+                                    int(p) for p in date_text.split("-")
+                                ]
+                                properties["series_index"] = (
+                                    float(year) + float(month) * 0.01
+                                )
+                                if prefs["log_level"] in "DEBUG":
+                                    log.debug(
+                                        'properties["series_index"], taken from pubdate={0}'.format(
+                                            properties["series_index"]
+                                        )
+                                    )
                 # ToDo: ? Pub year, but spring, summer, ...
 
             except Exception as e:
-                log.exception(_('Error parsing section %r for url: %r. Error: %r') % (section, url, e))
+                log.exception(
+                    _("Error parsing section %r for url: %r. Error: %r")
+                    % (section, url, e)
+                )
 
         # The second content box, if present, contains the pub title (extended) and the table of contents
         try:
@@ -1438,57 +1819,83 @@ class Publication(Record):
                 for tooltip in root.xpath('//sup[@class="mouseover"]'):
                     # We grab the parent of the element to call the remove directly on it
                     tooltip.getparent().remove(tooltip)
-                for tooltip in root.xpath('//span[@class="tooltiptext tooltipnarrow tooltipright"]'):
+                for tooltip in root.xpath(
+                    '//span[@class="tooltiptext tooltipnarrow tooltipright"]'
+                ):
                     # We grab the parent of the element to call the remove directly on it
                     tooltip.getparent().remove(tooltip)
                 for tooltip in root.xpath('//div[@class="tooltip tooltipright"]'):
                     # We grab the parent of the element to call the remove directly on it
-                    remove_node(tooltip, keep_content=True)  # but save the author's name
+                    remove_node(
+                        tooltip, keep_content=True
+                    )  # but save the author's name
             except Exception as e:
-                log.debug('Exception ignored while deleting tooltips: {0}'.format(e))
+                log.debug("Exception ignored while deleting tooltips: {0}".format(e))
             # contents_node = root.xpath('//div[@class="ContentBox"][2]/ul')
             # Contents (view Concise Listing)
             number_of_content_boxes = len(root.findall('.//div[@class="ContentBox"]'))
-            if prefs['log_level'] in 'DEBUG':
-                log.debug('number_of_content_boxes={0}'.format(number_of_content_boxes))
+            if prefs["log_level"] in "DEBUG":
+                log.debug("number_of_content_boxes={0}".format(number_of_content_boxes))
             if number_of_content_boxes > 1:
                 contents_node = root.xpath('//div[@class="ContentBox"][2]')
             else:
                 contents_node = []
             if number_of_content_boxes > 1:
                 # xyz = _(contents_node[1].text_content().strip())
-                if prefs['log_level'] in 'DEBUG':
+                if prefs["log_level"] in "DEBUG":
                     for contents_node_line in contents_node:
                         contents_node_line_str = etree.tostring(contents_node_line)
-                        log.debug('contents_node_line={0}'.format(contents_node_line_str))
-                title_node = root.xpath('//div[@class="ContentBox"][2]/ul/li//a[1]/@href')
-                if prefs['log_level'] in 'DEBUG':
-                    log.debug('title_node={0}'.format(title_node))
-                title_id = title_node[0][title_node[0].index('?') + 1:]
+                        log.debug(
+                            "contents_node_line={0}".format(contents_node_line_str)
+                        )
+                title_node = root.xpath(
+                    '//div[@class="ContentBox"][2]/ul/li//a[1]/@href'
+                )
+                if prefs["log_level"] in "DEBUG":
+                    log.debug("title_node={0}".format(title_node))
+                title_id = title_node[0][title_node[0].index("?") + 1 :]
                 properties["isfdb-title"] = title_id
-                properties["comments"] = sanitize_comments_html(tostring(contents_node[0], method='html'))
+                properties["comments"] = sanitize_comments_html(
+                    tostring(contents_node[0], method="html")
+                )
                 if prefs["translate_isfdb"]:
                     for term in TRANSLATION_REPLACINGS:
                         # log.debug('term, msgtext='.format(term, _(term)))
-                        properties["comments"] = properties["comments"].replace(term, _(term))
+                        properties["comments"] = properties["comments"].replace(
+                            term, _(term)
+                        )
             else:
-                if prefs['log_level'] in ['INFO', 'DEBUG']:
-                    log.debug('No second content box found!')
+                if prefs["log_level"] in ["INFO", "DEBUG"]:
+                    log.debug("No second content box found!")
         except Exception as e:
-            log.exception(_('Error parsing the second content box for url: %r. Error: %r') % (url, e))
+            log.exception(
+                _("Error parsing the second content box for url: %r. Error: %r")
+                % (url, e)
+            )
 
-        combined_comments = ''
+        combined_comments = ""
         for k in sorted(properties):
-            if k in ['synopsis', 'comments', 'notes', 'series_notes', 'series_number_notes', 'user_rating', 'webpage',
-                     'series_webpages', 'cover']:
-                combined_comments = combined_comments + properties[k] + '<br />'
-        properties["comments"] = combined_comments + _('Source for publication metadata: ') + url
+            if k in [
+                "synopsis",
+                "comments",
+                "notes",
+                "series_notes",
+                "series_number_notes",
+                "user_rating",
+                "webpage",
+                "series_webpages",
+                "cover",
+            ]:
+                combined_comments = combined_comments + properties[k] + "<br />"
+        properties["comments"] = (
+            combined_comments + _("Source for publication metadata: ") + url
+        )
 
         # no series info was found in ContentBox #1, so look in ContenBox #2:
         # ToDo: See series search in title class
 
         if "series" not in properties:
-            log.info(_('No series found so far. Looking further.'))
+            log.info(_("No series found so far. Looking further."))
             # <span class="containertitle">Editor Title:</span>
             # <a href="https://www.isfdb.org/cgi-bin/title.cgi?2595721" dir="ltr">Utopia-Science-Fiction-Magazin - 1958</a>
             # <a href="https://www.isfdb.org/cgi-bin/pe.cgi?48353" dir="ltr">Utopia-Science-Fiction-Magazin</a>
@@ -1497,28 +1904,38 @@ class Publication(Record):
 
             # ToDo: This makes unwanted series entries (series name = author name)?
 
-            properties["series"] = ''
+            properties["series"] = ""
             try:
                 # if ISFDB4.loc_prefs["combine_series"]:
                 # If series is an url, open series page and search for "Sub-series of:"
                 series_url = str(root.xpath('//*[@id="content"]/div[2]/a[2]/@href')[0])
-                if prefs['log_level'] in 'DEBUG':
-                    log.debug('url={0}'.format(series_url))
+                if prefs["log_level"] in "DEBUG":
+                    log.debug("url={0}".format(series_url))
                 # https://www.isfdb.org/cgi-bin/ea.cgi?249
-                if '/ea.cgi?' in series_url:
+                if "/ea.cgi?" in series_url:
                     raise KeyError  # url leads to an author page
-                properties["series"] = Series.from_url(browser, series_url, timeout, log, prefs)
-                if properties["series"] == '':
-                    properties["series"] = root.xpath('//*[@id="content"]/div[2]/a[2]')[0].text_content().strip()
-                if prefs['log_level'] in 'DEBUG':
+                properties["series"] = Series.from_url(
+                    browser, series_url, timeout, log, prefs
+                )
+                if properties["series"] == "":
+                    properties["series"] = (
+                        root.xpath('//*[@id="content"]/div[2]/a[2]')[0]
+                        .text_content()
+                        .strip()
+                    )
+                if prefs["log_level"] in "DEBUG":
                     log.debug('properties["series"]={0}'.format(properties["series"]))
-                if '#' in properties["title"]:
-                    match = re.search(r'#(\d+)', properties["title"], re.IGNORECASE)
+                if "#" in properties["title"]:
+                    match = re.search(r"#(\d+)", properties["title"], re.IGNORECASE)
                     if match:
                         # properties["series_index"] = float(int("".join(filter(match.group(1).isdigit, match.group(1)))))
                         properties["series_index"] = float(match.group(1))
-                        if prefs['log_level'] in 'DEBUG':
-                            log.debug('properties["series_index"]={0}'.format(properties["series_index"]))
+                        if prefs["log_level"] in "DEBUG":
+                            log.debug(
+                                'properties["series_index"]={0}'.format(
+                                    properties["series_index"]
+                                )
+                            )
                 else:
                     # Check next content box for series index
                     # /html/body/div/div[3]/div[2]
@@ -1530,17 +1947,22 @@ class Publication(Record):
                     #     #.text_content().strip()
                     pass  # ToDo
 
-                properties["comments"] = properties["comments"] + '<br />' + _('Source for series metadata: ') + series_url
+                properties["comments"] = (
+                    properties["comments"]
+                    + "<br />"
+                    + _("Source for series metadata: ")
+                    + series_url
+                )
             except (IndexError, KeyError):
-                if prefs['log_level'] in ('DEBUG', 'INFO'):
-                    log.info(_('No series found at all.'))
+                if prefs["log_level"] in ("DEBUG", "INFO"):
+                    log.info(_("No series found at all."))
 
         try:
             img_src = root.xpath('//div[@id="content"]//table/tr[1]/td[1]/a/img/@src')
             if img_src:
                 properties["cover_url"] = img_src[0]
         except Exception as e:
-            log.exception(_('Error parsing cover for url: %r. Error: %r') % (url, e))
+            log.exception(_("Error parsing cover for url: %r. Error: %r") % (url, e))
 
         # Workaround to avoid merging publications with eeh same title and author(s) by Calibre's default behavior
         # Publication.BOOK_PUB_NO = Publication.BOOK_PUB_NO + 1
@@ -1551,7 +1973,7 @@ class Publication(Record):
 
 class TitleCovers(Record):
     # URL = 'http://www.isfdb.org/cgi-bin/titlecovers.cgi?'
-    URL = 'https://www.isfdb.org/cgi-bin/titlecovers.cgi?'
+    URL = "https://www.isfdb.org/cgi-bin/titlecovers.cgi?"
 
     @classmethod
     def url_from_id(cls, title_id):
@@ -1559,7 +1981,7 @@ class TitleCovers(Record):
 
     @classmethod
     def id_from_url(cls, url):
-        return re.search(r'(\d+)$', url).group(1)
+        return re.search(r"(\d+)$", url).group(1)
 
     @classmethod
     def from_url(cls, browser, url, timeout, log, prefs):
@@ -1569,15 +1991,23 @@ class TitleCovers(Record):
         # Get rid of tooltips
         try:
             for tooltip in root.xpath('//sup[@class="mouseover"]'):
-                tooltip.getparent().remove(tooltip)  # We grab the parent of the element to call the remove directly on it
-            for tooltip in root.xpath('//span[@class="tooltiptext tooltipnarrow tooltipright"]'):
-                tooltip.getparent().remove(tooltip)  # We grab the parent of the element to call the remove directly on it
+                tooltip.getparent().remove(
+                    tooltip
+                )  # We grab the parent of the element to call the remove directly on it
+            for tooltip in root.xpath(
+                '//span[@class="tooltiptext tooltipnarrow tooltipright"]'
+            ):
+                tooltip.getparent().remove(
+                    tooltip
+                )  # We grab the parent of the element to call the remove directly on it
         except Exception as e:
-            log.debug('Exception ignored while deleting tooltips: {0}'.format(e))
+            log.debug("Exception ignored while deleting tooltips: {0}".format(e))
 
         covers = root.xpath('//div[@id="main"]/a/img/@src')
-        if prefs['log_level'] in 'DEBUG':
-            log.debug("Parsed covers from url %r. Found %d covers." % (url, len(covers)))
+        if prefs["log_level"] in "DEBUG":
+            log.debug(
+                "Parsed covers from url %r. Found %d covers." % (url, len(covers))
+            )
         return covers
 
 
@@ -1585,7 +2015,7 @@ class Title(Record):
     # title record -> publication record(s) (m:n)
 
     # URL = 'http://www.isfdb.org/cgi-bin/title.cgi?'
-    URL = 'https://www.isfdb.org/cgi-bin/title.cgi?'
+    URL = "https://www.isfdb.org/cgi-bin/title.cgi?"
     # 'https://www.isfdb.org/cgi-bin/title.cgi?57736'
 
     @classmethod
@@ -1594,99 +2024,111 @@ class Title(Record):
 
     @classmethod
     def id_from_url(cls, url):
-        return re.search(r'(\d+)$', url).group(1)
+        return re.search(r"(\d+)$", url).group(1)
 
     @classmethod
     def stub_from_search(cls, row, log, prefs):
 
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('*** Enter Title.stub_from_search().')
-            log.debug('row={0}'.format(row.xpath('.')[0].text_content()))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("*** Enter Title.stub_from_search().")
+            log.debug("row={0}".format(row.xpath(".")[0].text_content()))
 
         properties = {}
 
         if row is None:
-            if prefs['log_level'] in ('DEBUG', 'INFO', 'ERROR'):
-                log.error(_('Title.stub_from_search(): row is None.'))
+            if prefs["log_level"] in ("DEBUG", "INFO", "ERROR"):
+                log.error(_("Title.stub_from_search(): row is None."))
             return properties
 
         try:
             # #main > form > table > tbody > tr.table1 > td:nth-child(5)
-            properties["title"] = row.xpath('td[5]/a')[0].text_content()
-            properties["url"] = row.xpath('td[5]/a/@href')[0]
-            properties["date"] = row.xpath('td[1]')[0].text_content()
+            properties["title"] = row.xpath("td[5]/a")[0].text_content()
+            properties["url"] = row.xpath("td[5]/a/@href")[0]
+            properties["date"] = row.xpath("td[1]")[0].text_content()
         except IndexError:
             # Handling Tooltip in div
             # //*[@id="main"]/form/table/tbody/tr[3]/td[5]/div
-            properties["title"] = row.xpath('td[5]/div/a/text()')[0]
-            properties["url"] = row.xpath('td[5]/div/a/@href')[0]
-            properties["date"] = row.xpath('td[1]')[0].text_content()
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('properties["title"]={0}, properties["url"]={1}.'.format(properties["title"], properties["url"]))
+            properties["title"] = row.xpath("td[5]/div/a/text()")[0]
+            properties["url"] = row.xpath("td[5]/div/a/@href")[0]
+            properties["date"] = row.xpath("td[1]")[0].text_content()
+        if prefs["log_level"] in "DEBUG":
+            log.debug(
+                'properties["title"]={0}, properties["url"]={1}.'.format(
+                    properties["title"], properties["url"]
+                )
+            )
 
         try:
-            properties["authors"] = [a.text_content() for a in row.xpath('td[6]/a')]
+            properties["authors"] = [a.text_content() for a in row.xpath("td[6]/a")]
         except IndexError:
             # Handling Tooltip in div
-            properties["authors"] = [a.text_content() for a in row.xpath('td[6]/div/a/text()')]
+            properties["authors"] = [
+                a.text_content() for a in row.xpath("td[6]/div/a/text()")
+            ]
 
         # Workaround to avoid merging titles with eeh same title and author(s) by Calibre's default behavior
         # Title.BOOK_TITLE_NO = Title.BOOK_TITLE_NO + 1
         # properties['book_title'] = Title.BOOK_TITLE_NO
 
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('properties={0}'.format(properties))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("properties={0}".format(properties))
 
         return properties
 
     @classmethod
     def stub_from_simple_search(cls, row, log, prefs):
 
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('*** Enter Title.stub_from_simple_search().')
-            log.debug('row={0}'.format(row.xpath('.')[0].text_content()))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("*** Enter Title.stub_from_simple_search().")
+            log.debug("row={0}".format(row.xpath(".")[0].text_content()))
 
         properties = {}
 
         if row is None:
-            if prefs['log_level'] in ('DEBUG', 'INFO', 'ERROR'):
-                log.error(_('Title.stub_from_simple_search(): row is None.'))
+            if prefs["log_level"] in ("DEBUG", "INFO", "ERROR"):
+                log.error(_("Title.stub_from_simple_search(): row is None."))
             return properties
 
         try:
             # #main > form > table > tbody > tr.table1 > td:nth-child(5)
-            properties["title"] = row.xpath('td[4]/a')[0].text_content()
-            properties["url"] = row.xpath('td[4]/a/@href')[0]
-            properties["date"] = row.xpath('td[1]')[0].text_content()
+            properties["title"] = row.xpath("td[4]/a")[0].text_content()
+            properties["url"] = row.xpath("td[4]/a/@href")[0]
+            properties["date"] = row.xpath("td[1]")[0].text_content()
         except IndexError:
             # Handling Tooltip in div
             # //*[@id="main"]/form/table/tbody/tr[3]/td[5]/div
-            properties["title"] = row.xpath('td[4]/div/a/text()')[0]
-            properties["url"] = row.xpath('td[4]/div/a/@href')[0]
-            properties["date"] = row.xpath('td[1]')[0].text_content()
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('properties["title"]={0}, properties["url"]={1}.'.format(properties["title"], properties["url"]))
+            properties["title"] = row.xpath("td[4]/div/a/text()")[0]
+            properties["url"] = row.xpath("td[4]/div/a/@href")[0]
+            properties["date"] = row.xpath("td[1]")[0].text_content()
+        if prefs["log_level"] in "DEBUG":
+            log.debug(
+                'properties["title"]={0}, properties["url"]={1}.'.format(
+                    properties["title"], properties["url"]
+                )
+            )
 
         try:
-            properties["authors"] = [a.text_content() for a in row.xpath('td[5]/a')]
+            properties["authors"] = [a.text_content() for a in row.xpath("td[5]/a")]
         except IndexError:
             # Handling Tooltip in div
-            properties["authors"] = [a.text_content() for a in row.xpath('td[5]/div/a/text()')]
+            properties["authors"] = [
+                a.text_content() for a in row.xpath("td[5]/div/a/text()")
+            ]
 
         # Workaround to avoid merging titles with eeh same title and author(s) by Calibre's default behavior
         # Title.BOOK_TITLE_NO = Title.BOOK_TITLE_NO + 1
         # properties['book_title'] = Title.BOOK_TITLE_NO
 
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('properties={0}'.format(properties))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("properties={0}".format(properties))
         return properties
 
     @classmethod
     def from_url(cls, browser, url, timeout, log, prefs):
 
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('*** Enter Title.from_url().')
-            log.debug('url={0}'.format(url))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("*** Enter Title.from_url().")
+            log.debug("url={0}".format(url))
 
         title_url = url  # Save url for comments
 
@@ -1697,18 +2139,24 @@ class Title(Record):
         # Get rid of tooltips
         try:
             for tooltip in root.xpath('//sup[@class="mouseover"]'):
-                tooltip.getparent().remove(tooltip)  # We grab the parent of the element to call the remove directly on it
-            for tooltip in root.xpath('//span[@class="tooltiptext tooltipnarrow tooltipright"]'):
-                tooltip.getparent().remove(tooltip)  # We grab the parent of the element to call the remove directly on it
+                tooltip.getparent().remove(
+                    tooltip
+                )  # We grab the parent of the element to call the remove directly on it
+            for tooltip in root.xpath(
+                '//span[@class="tooltiptext tooltipnarrow tooltipright"]'
+            ):
+                tooltip.getparent().remove(
+                    tooltip
+                )  # We grab the parent of the element to call the remove directly on it
             # Kills the author link and link text:
             # for tooltip in root.xpath('//div[@class="tooltip tooltipright"]'):
             #     tooltip.getparent().remove(tooltip)  # We grab the parent of the element to call the remove directly on it
         except Exception as e:
-            log.debug('Exception ignored while deleting tooltips: {0}'.format(e))
+            log.debug("Exception ignored while deleting tooltips: {0}".format(e))
 
         detail_div = root.xpath('//div[@class="ContentBox"]')[0]
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('detail_div={0}'.format(etree.tostring(detail_div)))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("detail_div={0}".format(etree.tostring(detail_div)))
             # b'<div class="ContentBox">\n
             # <b>Title:</b> Don\'t Wash the Carats\n
             # <span class="recordID"><b>Title Record # </b>58153</span>\n
@@ -1728,82 +2176,98 @@ class Title(Record):
             # </div>\n'
 
         detail_nodes = []
-        author_title = author_link = author_alias = author_alias_link = series_title = series_link = ''
+        author_title = author_link = author_alias = author_alias_link = series_title = (
+            series_link
+        ) = ""
         # Loop trough the title infos
         for child in detail_div.iter():
-            if prefs['log_level'] in 'DEBUG':
-                log.debug(f'tag: {child.tag}')
-                log.debug(f'attrib: {child.attrib}')
-                log.debug(f'text: {child.text!r}')
-                log.debug(f'tail: {child.tail!r}')
-            if child.text == 'Title:':
-                detail_nodes.append(['Title', child.tail.strip()])
-            elif child.text in ['Author:', 'Authors:', 'Editor:', 'Editors:']:
-                author_title = child.text.rstrip(':')
-            elif child.text == 'Variant Title of:':
-                author_alias = child.text.rstrip(':')
-            elif child.text == 'Series Number:':
-                detail_nodes.append(['Series Number', child.tail.strip()])
-            elif 'href' in child.attrib:
-                if child.attrib['href'].startswith('https://www.isfdb.org/cgi-bin/ea.cgi?'):
+            if prefs["log_level"] in "DEBUG":
+                log.debug(f"tag: {child.tag}")
+                log.debug(f"attrib: {child.attrib}")
+                log.debug(f"text: {child.text!r}")
+                log.debug(f"tail: {child.tail!r}")
+            if child.text == "Title:":
+                detail_nodes.append(["Title", child.tail.strip()])
+            elif child.text in ["Author:", "Authors:", "Editor:", "Editors:"]:
+                author_title = child.text.rstrip(":")
+            elif child.text == "Variant Title of:":
+                author_alias = child.text.rstrip(":")
+            elif child.text == "Series Number:":
+                detail_nodes.append(["Series Number", child.tail.strip()])
+            elif "href" in child.attrib:
+                if child.attrib["href"].startswith(
+                    "https://www.isfdb.org/cgi-bin/ea.cgi?"
+                ):
                     # Author child
                     if author_alias:
-                        author_alias_link = child.attrib['href']  # for future purposes (author info in metadata)
+                        author_alias_link = child.attrib[
+                            "href"
+                        ]  # for future purposes (author info in metadata)
                         detail_nodes.append([author_alias, child.text.strip()])
                     else:
-                        author_link = child.attrib['href']  # for future purposes (author info in metadata)
+                        author_link = child.attrib[
+                            "href"
+                        ]  # for future purposes (author info in metadata)
                         detail_nodes.append([author_title, child.text.strip()])
-                elif child.attrib['href'].startswith('https://www.isfdb.org/cgi-bin/pe.cgi?'):
+                elif child.attrib["href"].startswith(
+                    "https://www.isfdb.org/cgi-bin/pe.cgi?"
+                ):
                     # Series child
                     series_title = child.text.strip()
-                    series_link = child.attrib['href']  # for future purposes (series info in metadata)
-                    detail_nodes.append(['Series', series_title])
+                    series_link = child.attrib[
+                        "href"
+                    ]  # for future purposes (series info in metadata)
+                    detail_nodes.append(["Series", series_title])
                 else:
-                    if prefs['log_level'] in 'DEBUG':
-                        log.debug('Unknown link type. Child ignored.')
-            elif child.text == 'Date:':
-                detail_nodes.append(['Date', child.tail.strip()])
-            elif child.text == 'Type:':
-                detail_nodes.append(['Type', child.tail.strip()])
-            elif child.text == 'Length:':
-                detail_nodes.append(['Length', child.tail.strip()])
-            elif child.text == 'Language:':
-                detail_nodes.append(['Language', child.tail.strip()])
-            elif child.text == 'User Rating:':
-                detail_nodes.append(['User Rating', child.tail.strip()])
-            elif child.text == 'Current Tags:':
-                detail_nodes.append(['Current Tags', child.tail.strip()])
-            elif child.text == 'Webpages:':
-                detail_nodes.append(['Webpages', child.tail.strip()])
-            elif child.text == 'Synopsis:':
-                detail_nodes.append(['Synopsis', child.tail.strip()])
-            elif child.text == 'Note:':
-                detail_nodes.append(['Note', child.tail.strip()])
+                    if prefs["log_level"] in "DEBUG":
+                        log.debug("Unknown link type. Child ignored.")
+            elif child.text == "Date:":
+                detail_nodes.append(["Date", child.tail.strip()])
+            elif child.text == "Type:":
+                detail_nodes.append(["Type", child.tail.strip()])
+            elif child.text == "Length:":
+                detail_nodes.append(["Length", child.tail.strip()])
+            elif child.text == "Language:":
+                detail_nodes.append(["Language", child.tail.strip()])
+            elif child.text == "User Rating:":
+                detail_nodes.append(["User Rating", child.tail.strip()])
+            elif child.text == "Current Tags:":
+                detail_nodes.append(["Current Tags", child.tail.strip()])
+            elif child.text == "Webpages:":
+                detail_nodes.append(["Webpages", child.tail.strip()])
+            elif child.text == "Synopsis:":
+                detail_nodes.append(["Synopsis", child.tail.strip()])
+            elif child.text == "Note:":
+                detail_nodes.append(["Note", child.tail.strip()])
             else:
-                if prefs['log_level'] in 'DEBUG':
+                if prefs["log_level"] in "DEBUG":
                     # Known childs:
                     # - Variant Title of:
-                    log.debug('Child ignored.')
+                    log.debug("Child ignored.")
 
         for detail_node in detail_nodes:
-            if prefs['log_level'] in 'DEBUG':
-                log.debug('detail_node={0}'.format(detail_node))
+            if prefs["log_level"] in "DEBUG":
+                log.debug("detail_node={0}".format(detail_node))
             section = detail_node[0]
             section_text_content = detail_node[1]
-            if prefs['log_level'] in 'DEBUG':
-                log.debug('section={0}, section_text_content={1}.'.format(section, section_text_content))
+            if prefs["log_level"] in "DEBUG":
+                log.debug(
+                    "section={0}, section_text_content={1}.".format(
+                        section, section_text_content
+                    )
+                )
 
-            date_text = ''  # Fallback vor series index construction
+            date_text = ""  # Fallback vor series index construction
 
             try:
 
-                if section == 'Title':
+                if section == "Title":
                     properties["title"] = detail_node[1]  # detail_node[0].tail.strip()
                     # if not properties["title"]:
                     #     # assume an extra span with a transliterated title tooltip
                     #     properties["title"] = detail_node[1].text_content().split('?')[0].strip()
 
-                elif section in ('Author', 'Authors', 'Editor', 'Editors'):
+                elif section in ("Author", "Authors", "Editor", "Editors"):
                     properties["authors"] = []
                     # author_links = [e for e in detail_node if e.tag == 'a']
                     # # for a in author_links:
@@ -1812,16 +2276,16 @@ class Title(Record):
                     #     if prefs['log_level'] in 'DEBUG':
                     #         log.debug('a={0}, author={1}.'.format(a, author))
                     author = detail_node[1]
-                    if author != 'uncredited':
-                        if section.startswith('Editor'):
+                    if author != "uncredited":
+                        if section.startswith("Editor"):
                             if prefs["translate_isfdb"]:
-                                properties["authors"].append(author + _(' (Editor)'))
+                                properties["authors"].append(author + _(" (Editor)"))
                             else:
-                                properties["authors"].append(author + ' (Editor)')
+                                properties["authors"].append(author + " (Editor)")
                         else:
                             properties["authors"].append(author)
 
-                elif section == 'Type':
+                elif section == "Type":
                     properties["type"] = detail_node[1]
                     # Copy title type to tags
                     if "tags" not in properties:
@@ -1835,13 +2299,13 @@ class Title(Record):
                     except KeyError:
                         pass
 
-                elif section == 'Length':
+                elif section == "Length":
                     properties["length"] = detail_node[1]
                     if "tags" not in properties:
                         properties["tags"] = []
                     properties["tags"].append(properties["length"])
 
-                elif section == 'Date':
+                elif section == "Date":
                     # In a title record, the date points always to the first publishing date (copyright)
                     date_text = detail_node[1]
                     # Make sure if date text is suitable to build a date object (empty string or "date unknown" etc)
@@ -1853,82 +2317,128 @@ class Title(Record):
                         day = day or 1
                         # Correct datetime result for day = 0: Set hour to 2 UTC
                         # (if not, datetime goes back to the last month and, in january, even to december last year)
-                        properties["pubdate"] = datetime.datetime(year, month, day, 2, 0, 0)
+                        properties["pubdate"] = datetime.datetime(
+                            year, month, day, 2, 0, 0
+                        )
                     except:
                         pass
 
-                elif section == 'Series':
-                    if prefs['log_level'] in 'DEBUG':
+                elif section == "Series":
+                    if prefs["log_level"] in "DEBUG":
                         log.debug('Section "Series" found: {0}'.format(detail_node))
                     # If series is an url, open series page and search for "Sub-series of:"
                     # https://www.isfdb.org/cgi-bin/pe.cgi?45706
                     # Scan series record
                     # Testen: Titel:War of the Maelstrom (Pub #2)Autoren:Jack L. Chalker
                     properties["series"] = detail_node[1]
-                    if properties["series"] == '':
+                    if properties["series"] == "":
                         properties["series"] = detail_node[1]
                         url = series_link  # str(detail_node[1].xpath('./@href')[0])
-                        if prefs['log_level'] in 'DEBUG':
-                            log.debug('Properties "Series" is a url: {0} - {1}'.format(properties["series"], url))
-                        properties["series"] = Series.from_url(browser, url, timeout, log, prefs)
-                        if prefs['log_level'] in 'DEBUG':
-                            log.debug('Properties "Series"={0}'.format(properties["series"]))
+                        if prefs["log_level"] in "DEBUG":
+                            log.debug(
+                                'Properties "Series" is a url: {0} - {1}'.format(
+                                    properties["series"], url
+                                )
+                            )
+                        properties["series"] = Series.from_url(
+                            browser, url, timeout, log, prefs
+                        )
+                        if prefs["log_level"] in "DEBUG":
+                            log.debug(
+                                'Properties "Series"={0}'.format(properties["series"])
+                            )
 
-                    if prefs['log_level'] in 'DEBUG':
-                        log.debug('Properties "Series"={0}'.format(properties["series"]))
-                    if properties["series"] == '':
+                    if prefs["log_level"] in "DEBUG":
+                        log.debug(
+                            'Properties "Series"={0}'.format(properties["series"])
+                        )
+                    if properties["series"] == "":
                         properties["series"] = detail_node[1]  # .text_content().strip()
-                        if prefs['log_level'] in 'DEBUG':
-                            log.debug('Properties "Series"={0}'.format(properties["series"]))
+                        if prefs["log_level"] in "DEBUG":
+                            log.debug(
+                                'Properties "Series"={0}'.format(properties["series"])
+                            )
 
-                elif section == 'Series Number':
-                    if prefs['log_level'] in 'DEBUG':
-                        log.debug('Section "Series Number" found: {0}'.format(detail_node[1]))
-                    if properties["series"] != '':
-                        if prefs['log_level'] in ('DEBUG', 'INFO'):
+                elif section == "Series Number":
+                    if prefs["log_level"] in "DEBUG":
+                        log.debug(
+                            'Section "Series Number" found: {0}'.format(detail_node[1])
+                        )
+                    if properties["series"] != "":
+                        if prefs["log_level"] in ("DEBUG", "INFO"):
                             log.info(
-                                _('Series is: "{0}". Now searching series index in "{1}"'.
-                                  format(properties["series"], detail_node[1])))  # .tail.strip())))
-                        if detail_node[1] == '':
+                                _(
+                                    'Series is: "{0}". Now searching series index in "{1}"'.format(
+                                        properties["series"], detail_node[1]
+                                    )
+                                )
+                            )  # .tail.strip())))
+                        if detail_node[1] == "":
                             properties["series_index"] = 0.0
-                        elif '/' in detail_node[1]:
+                        elif "/" in detail_node[1]:
                             # Calibre accepts only float format compatible numbers, not e. g. "61/62"
-                            series_index_list = detail_node[1].split('/')
+                            series_index_list = detail_node[1].split("/")
                             # properties["series_index"] = float(series_index_list[0].strip())
-                            properties["series_index"] = float(int("".join(filter(str.isdigit, series_index_list[0])).strip()))
-                            properties["series_number_notes"] = \
-                                _("Reported number was {0} and was reduced to a Calibre compatible format."). \
-                                    format(detail_node[1])
+                            properties["series_index"] = float(
+                                int(
+                                    "".join(
+                                        filter(str.isdigit, series_index_list[0])
+                                    ).strip()
+                                )
+                            )
+                            properties["series_number_notes"] = _(
+                                "Reported number was {0} and was reduced to a Calibre compatible format."
+                            ).format(detail_node[1])
                         elif is_roman_numeral(detail_node[1].strip()):
-                            if prefs['log_level'] in 'DEBUG':
-                                log.debug('Roman literal found:{0}'.format(detail_node[1].strip()))
+                            if prefs["log_level"] in "DEBUG":
+                                log.debug(
+                                    "Roman literal found:{0}".format(
+                                        detail_node[1].strip()
+                                    )
+                                )
                             # Calibre accepts only float format compatible arabic numbers, not roman numerals e. g. "IV"
                             # https://www.isfdb.org/cgi-bin/pl.cgi?243949
-                            properties["series_index"] = float(roman_to_int(detail_node[1].strip()))
-                            properties["series_number_notes"] = \
-                                _("Reported number was the roman numeral {0} and was converted to a Calibre compatible format.<br />"). \
-                                    format(detail_node[1].strip())
+                            properties["series_index"] = float(
+                                roman_to_int(detail_node[1].strip())
+                            )
+                            properties["series_number_notes"] = _(
+                                "Reported number was the roman numeral {0} and was converted to a Calibre compatible format.<br />"
+                            ).format(detail_node[1].strip())
                         else:
                             try:
-                                properties["series_index"] = float(int(
-                                    "".join(filter(str.isdigit, detail_node[1].strip()))))
+                                properties["series_index"] = float(
+                                    int(
+                                        "".join(
+                                            filter(str.isdigit, detail_node[1].strip())
+                                        )
+                                    )
+                                )
                             except ValueError:
-                                properties["series_number_notes"] = \
-                                    _("Could not convert {0} to a Calibre compatible format.<br />"). \
-                                        format(detail_node[1].strip())
+                                properties["series_number_notes"] = _(
+                                    "Could not convert {0} to a Calibre compatible format.<br />"
+                                ).format(detail_node[1].strip())
                                 properties["series_index"] = 0.0
-                                if prefs['log_level'] in ('DEBUG', 'INFO', 'ERROR'):
-                                    log.error('"Could not convert {0} to a Calibre compatible format.<br />"'.format(
-                                        detail_node[1].strip()))
-                        if prefs['log_level'] in 'DEBUG':
-                            log.debug('properties["series_index"]={0}'.format(properties["series_index"]))
+                                if prefs["log_level"] in ("DEBUG", "INFO", "ERROR"):
+                                    log.error(
+                                        '"Could not convert {0} to a Calibre compatible format.<br />"'.format(
+                                            detail_node[1].strip()
+                                        )
+                                    )
+                        if prefs["log_level"] in "DEBUG":
+                            log.debug(
+                                'properties["series_index"]={0}'.format(
+                                    properties["series_index"]
+                                )
+                            )
 
-                elif section == 'Webpages':
-                    properties["webpages"] = str(detail_node[1].xpath('./@href')[0])
-                    if prefs['log_level'] in 'DEBUG':
-                        log.debug('properties["webpages"]={0}'.format(properties["webpages"]))
+                elif section == "Webpages":
+                    properties["webpages"] = str(detail_node[1].xpath("./@href")[0])
+                    if prefs["log_level"] in "DEBUG":
+                        log.debug(
+                            'properties["webpages"]={0}'.format(properties["webpages"])
+                        )
 
-                elif section == 'Language':
+                elif section == "Language":
                     properties["language"] = detail_node[1].strip()
                     # For calibre, the strings must be in the language of the current locale
                     # Both Calibre and ISFDB use ISO 639-2 language codes,
@@ -1939,14 +2449,16 @@ class Title(Record):
                     except KeyError:
                         pass
 
-                elif section == 'Synopsis':
+                elif section == "Synopsis":
                     properties["synopsis"] = detail_node[1].strip()
 
-                elif section == 'Note':
+                elif section == "Note":
                     if "notes" not in properties:
                         properties["notes"] = detail_node[1].strip()
                     else:
-                        properties["notes"] = properties["notes"] + '<br />' + detail_node[1].strip()
+                        properties["notes"] = (
+                            properties["notes"] + "<br />" + detail_node[1].strip()
+                        )
 
                 # Test with: https://www.isfdb.org/cgi-bin/title.cgi?1360234
                 # ISFDB: user rating is float between 1 and 10. Meanings are:
@@ -1965,97 +2477,132 @@ class Title(Record):
                 # Title: Etaoin ShrdluTitle Record # 41652 [Edit] [Edit History]
                 # Author: Fredric Brown
                 # User Rating: 5.60 (5 votes) Your vote: Not cast VOTE
-                elif section == 'User Rating':
-                    if 'This title has no votes' not in detail_node[1].strip():
+                elif section == "User Rating":
+                    if "This title has no votes" not in detail_node[1].strip():
                         # 9.49 (45 votes)
                         # Number of votes don't exist in Calibre, so put it in comments.
                         properties["user_rating"] = detail_node[1].strip()
                         rating = properties["user_rating"]
-                        rating = float(re.search(r'(\d+\.\d+)', rating).group(1)) * 0.5  # Convert to five-star system
+                        rating = (
+                            float(re.search(r"(\d+\.\d+)", rating).group(1)) * 0.5
+                        )  # Convert to five-star system
                         properties["rating"] = rating  # Calibre rating field
 
-                elif section == 'Current Tags':
+                elif section == "Current Tags":
                     # Current Tags: None
-                    if detail_node[1].strip() != 'None':
+                    if detail_node[1].strip() != "None":
                         if "tags" not in properties:
                             properties["tags"] = []
                         # Current Tags: enhanced intelligence (1), genetics (1), Daniel Keyes (1)
-                        tag_links = [e for e in detail_node if e.tag == 'a']
+                        tag_links = [e for e in detail_node if e.tag == "a"]
                         for a in tag_links:
                             tag = a.text_content().strip()
                             if tag != "Add Tags":
                                 properties["tags"].append(tag)
-                                if prefs['log_level'] in 'DEBUG':
+                                if prefs["log_level"] in "DEBUG":
                                     log.debug('tag "{0}" added.'.format(tag))
 
-                elif section == 'Variant Title of':
+                elif section == "Variant Title of":
                     if "notes" not in properties:
-                        properties["notes"] = 'Variant Title of ' + detail_node[0].strip()
+                        properties["notes"] = (
+                            "Variant Title of " + detail_node[0].strip()
+                        )
                     else:
-                        properties["notes"] = properties["notes"] + '<br />' + 'Variant Title of ' + detail_node[
-                            0].tail.strip()
+                        properties["notes"] = (
+                            properties["notes"]
+                            + "<br />"
+                            + "Variant Title of "
+                            + detail_node[0].tail.strip()
+                        )
 
             except Exception as e:
-                log.exception(_('Error parsing section {0} for url: {1}. Error: {2}').format(section, url, e))
+                log.exception(
+                    _("Error parsing section {0} for url: {1}. Error: {2}").format(
+                        section, url, e
+                    )
+                )
 
-        if 'comments' in properties:
-            properties["comments"] = properties["comments"] + '<br />' + _('Source for title metadata: ') + title_url
+        if "comments" in properties:
+            properties["comments"] = (
+                properties["comments"]
+                + "<br />"
+                + _("Source for title metadata: ")
+                + title_url
+            )
         else:
-            properties["comments"] = '<br />' + _('Source for title metadata: ') + title_url
+            properties["comments"] = (
+                "<br />" + _("Source for title metadata: ") + title_url
+            )
 
         # Save all publication ids for this title
         publication_links = root.xpath('//a[contains(@href, "/pl.cgi?")]/@href')
-        properties["publications"] = [Publication.id_from_url(l) for l in publication_links]
+        properties["publications"] = [
+            Publication.id_from_url(l) for l in publication_links
+        ]
 
         # If the title date is in pub list, set the publication text and link in comment as "First published in: ..."
-        if 'pubdate' in properties:
+        if "pubdate" in properties:
             title_date = properties["pubdate"].isoformat()[:10]
-            if prefs['log_level'] in 'DEBUG':
-                log.debug('title date={0}'.format(title_date))
+            if prefs["log_level"] in "DEBUG":
+                log.debug("title date={0}".format(title_date))
             pubrows = root.xpath('//table[@class="publications"]/tr')
             for pubrow in pubrows:
-                pub_date = ''.join(pubrow.xpath('./td[2]/text()')).strip()
-                if pub_date != '':
-                    if prefs['log_level'] in 'DEBUG':
-                        log.debug('pub_date={0}'.format(pub_date))
+                pub_date = "".join(pubrow.xpath("./td[2]/text()")).strip()
+                if pub_date != "":
+                    if prefs["log_level"] in "DEBUG":
+                        log.debug("pub_date={0}".format(pub_date))
                     # Ignore day if day in pubdate is zero
-                    if pub_date[-2:] == '00':
+                    if pub_date[-2:] == "00":
                         pub_date = pub_date[:-2] + title_date[-2:]
-                        if prefs['log_level'] in 'DEBUG':
-                            log.debug('pub_date={0}'.format(pub_date))
+                        if prefs["log_level"] in "DEBUG":
+                            log.debug("pub_date={0}".format(pub_date))
                     if pub_date == title_date:
-                        if prefs['log_level'] in 'DEBUG':
-                            log.debug('pub_date found in pub table.')
+                        if prefs["log_level"] in "DEBUG":
+                            log.debug("pub_date found in pub table.")
                         # Extracting the text content of the first two cells (pub title and link, pubdate)
-                        pub_title = ''.join(pubrow.xpath('./td[1]/a/text()'))
-                        pub_link = ''.join(pubrow.xpath('./td[1]/a/@href'))
-                        pub_info = pub_title + ' (' + pub_link + ').'
-                        if prefs['log_level'] in 'DEBUG':
-                            log.debug('pub_info={0}'.format(pub_info))
-                        if 'comments' in properties:
-                            properties["comments"] = properties["comments"] + '<br />' + _('First published in: ') + pub_info
+                        pub_title = "".join(pubrow.xpath("./td[1]/a/text()"))
+                        pub_link = "".join(pubrow.xpath("./td[1]/a/@href"))
+                        pub_info = pub_title + " (" + pub_link + ")."
+                        if prefs["log_level"] in "DEBUG":
+                            log.debug("pub_info={0}".format(pub_info))
+                        if "comments" in properties:
+                            properties["comments"] = (
+                                properties["comments"]
+                                + "<br />"
+                                + _("First published in: ")
+                                + pub_info
+                            )
                         else:
-                            properties["comments"] = '<br />' + _('First published in: ') + pub_info
+                            properties["comments"] = (
+                                "<br />" + _("First published in: ") + pub_info
+                            )
                         break
+
 
 class Series(Record):
     # URL = 'http://www.isfdb.org/cgi-bin/pe.cgi?'
-    URL = 'https://www.isfdb.org/cgi-bin/pe.cgi?'
+    URL = "https://www.isfdb.org/cgi-bin/pe.cgi?"
 
     @classmethod
     def root_from_url(cls, browser, url, timeout, log, prefs):
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('*** Enter Series.root_from_url().')
-            log.debug('url={0}'.format(url))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("*** Enter Series.root_from_url().")
+            log.debug("url={0}".format(url))
 
         # Ensure modern headers to avoid ISFDB 403 blocking
         try:
             browser.addheaders = [
-                ('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                               'AppleWebKit/537.36 (KHTML, like Gecko) '
-                               'Chrome/120.0.0.0 Safari/537.36'),
-                ('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'),
-                ('Accept-Language', 'en-US,en;q=0.9'),
+                (
+                    "User-Agent",
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36",
+                ),
+                (
+                    "Accept",
+                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                ),
+                ("Accept-Language", "en-US,en;q=0.9"),
             ]
         except Exception:
             pass
@@ -2063,52 +2610,67 @@ class Series(Record):
         response = browser.open_novisit(url, timeout=timeout)
         location = response.geturl()
         raw = response.read()
-        raw = raw.decode('iso_8859_1', 'ignore')
+        raw = raw.decode("iso_8859_1", "ignore")
         return location, fromstring(clean_ascii_chars(raw))
 
     @classmethod
     def url_from_id(cls, title_id):
         return cls.URL + title_id
 
-
     @classmethod
     def id_from_url(cls, url):
-        return re.search(r'(\d+)$', url).group(1)
+        return re.search(r"(\d+)$", url).group(1)
 
     @classmethod
     def from_url(cls, browser, url, timeout, log, prefs):
 
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('*** Enter Series.from_url().')
-            log.debug('url={0}'.format(url))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("*** Enter Series.from_url().")
+            log.debug("url={0}".format(url))
 
-        properties = {"series": '', "main_series": '', "series_tags": list(''), "series_notes": '',
-                      "series_webpages": ''}
+        properties = {
+            "series": "",
+            "main_series": "",
+            "series_tags": list(""),
+            "series_notes": "",
+            "series_webpages": "",
+        }
         # ToDo: if series in properties:
         # properties["sub_series"] = ''
-        series_candidate = ''
-        full_series = ''
+        series_candidate = ""
+        full_series = ""
 
         location, root = Series.root_from_url(browser, url, timeout, log, prefs)
 
         # Is this an author record?
-        if 'Author Record #' in etree.tostring(root, encoding='utf8', method='xml').decode():
-            if prefs['log_level'] in 'DEBUG':
-                log.debug('This is a author record page, no series page. Quit.')
-            return ''
+        if (
+            "Author Record #"
+            in etree.tostring(root, encoding="utf8", method="xml").decode()
+        ):
+            if prefs["log_level"] in "DEBUG":
+                log.debug("This is a author record page, no series page. Quit.")
+            return ""
 
         # Get rid of tooltips
         try:
             for tooltip in root.xpath('//sup[@class="mouseover"]'):
-                tooltip.getparent().remove(tooltip)  # We grab the parent of the element to call the remove directly on it
-            for tooltip in root.xpath('//span[@class="tooltiptext tooltipnarrow tooltipright"]'):
-                tooltip.getparent().remove(tooltip)  # We grab the parent of the element to call the remove directly on it
+                tooltip.getparent().remove(
+                    tooltip
+                )  # We grab the parent of the element to call the remove directly on it
+            for tooltip in root.xpath(
+                '//span[@class="tooltiptext tooltipnarrow tooltipright"]'
+            ):
+                tooltip.getparent().remove(
+                    tooltip
+                )  # We grab the parent of the element to call the remove directly on it
         except Exception as e:
-            log.debug('Exception ignored while deleting tooltips: {0}'.format(e))
+            log.debug("Exception ignored while deleting tooltips: {0}".format(e))
 
-        detail_nodes = root.xpath('//div[@id="content"]/div[@class="ContentBox"][1]/ul/li')
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('Found {0} detail_nodes.'.format(len(detail_nodes)))
+        detail_nodes = root.xpath(
+            '//div[@id="content"]/div[@class="ContentBox"][1]/ul/li'
+        )
+        if prefs["log_level"] in "DEBUG":
+            log.debug("Found {0} detail_nodes.".format(len(detail_nodes)))
 
         # Series record of title records looks like:
         # Series: Discworld                    Series Record # 186
@@ -2162,17 +2724,21 @@ class Series(Record):
 
         for detail_node in detail_nodes:
             html_line = detail_node.text_content()
-            if prefs['log_level'] in 'DEBUG':
-                log.debug('html_line={0}'.format(html_line))
-            series_captions = ['Publication Series:', 'Series:']
-            series_record_captions = ['Pub. Series Record #', 'Series Record #']
+            if prefs["log_level"] in "DEBUG":
+                log.debug("html_line={0}".format(html_line))
+            series_captions = ["Publication Series:", "Series:"]
+            series_record_captions = ["Pub. Series Record #", "Series Record #"]
             for series_caption in series_captions:
                 if series_caption in html_line:
                     series_candidate = html_line.split(series_caption, 1)[1].strip()
                     idx = series_captions.index(series_caption)
-                    properties["series"] = series_candidate.split(series_record_captions[idx], 1)[0].strip()
-                    if prefs['log_level'] in 'DEBUG':
-                        log.debug('properties["series"]={0}'.format(properties["series"]))
+                    properties["series"] = series_candidate.split(
+                        series_record_captions[idx], 1
+                    )[0].strip()
+                    if prefs["log_level"] in "DEBUG":
+                        log.debug(
+                            'properties["series"]={0}'.format(properties["series"])
+                        )
                     # series_candidate = html_line.split(series_caption, 1)[1].strip()
                     # idx = series_captions.index(series_caption)
                     # series_candidate = series_candidate.split(series_record_captions[idx], 1)[0].strip()
@@ -2184,47 +2750,73 @@ class Series(Record):
                     #     properties["series"] = series_candidate
                     #     break
                     break
-            if 'Sub-series of:' in html_line:  # check for main series, if any
-                properties["main_series"] = html_line.split("Sub-series of:", 1)[1].strip()
-                if prefs['log_level'] in 'DEBUG':
-                    log.debug('properties["main_series"]={0}'.format(properties["main_series"]))
+            if "Sub-series of:" in html_line:  # check for main series, if any
+                properties["main_series"] = html_line.split("Sub-series of:", 1)[
+                    1
+                ].strip()
+                if prefs["log_level"] in "DEBUG":
+                    log.debug(
+                        'properties["main_series"]={0}'.format(
+                            properties["main_series"]
+                        )
+                    )
                 break
-            if 'Series Tags:' in html_line:  # check for series tags, if any
+            if "Series Tags:" in html_line:  # check for series tags, if any
                 series_tags = html_line.split("Series Tags:", 1)[1].strip()
-                if prefs['log_level'] in 'DEBUG':
-                    log.debug('series_tags={0}'.format(series_tags))
+                if prefs["log_level"] in "DEBUG":
+                    log.debug("series_tags={0}".format(series_tags))
                 # fantasy (3), horror (3), necromancers (1), sword and sorcery (1), heroic fantasy (1)
-                series_tags_clean = re.sub(r'\([0-9]*\)]', '', series_tags)
-                properties["series_tags"] = [x.strip() for x in series_tags_clean.split(',')]
-                if prefs['log_level'] in 'DEBUG':
-                    log.debug('properties["series_tags"]={0}'.format(properties["series_tags"]))
+                series_tags_clean = re.sub(r"\([0-9]*\)]", "", series_tags)
+                properties["series_tags"] = [
+                    x.strip() for x in series_tags_clean.split(",")
+                ]
+                if prefs["log_level"] in "DEBUG":
+                    log.debug(
+                        'properties["series_tags"]={0}'.format(
+                            properties["series_tags"]
+                        )
+                    )
                 if "tags" in properties:
                     properties["tags"].append(properties["series_tags"])
                 else:
                     properties["tags"] = properties["series_tags"]
                 break
-            if 'Notes:' in html_line:  # check for series notes, if any
+            if "Notes:" in html_line:  # check for series notes, if any
                 properties["series_notes"] = html_line.split("Notes:", 1)[1].strip()
-                if prefs['log_level'] in 'DEBUG':
-                    log.debug('properties["series_notes"]={0}'.format(properties["series_notes"]))
+                if prefs["log_level"] in "DEBUG":
+                    log.debug(
+                        'properties["series_notes"]={0}'.format(
+                            properties["series_notes"]
+                        )
+                    )
                 break
-            if 'Webpages:' in html_line:  # check for series webpages, if any
-                properties["series_webpages"] = html_line.split("Webpages:", 1)[1].strip()
-                if prefs['log_level'] in 'DEBUG':
-                    log.debug('properties["series_webpages"]={0}'.format(properties["series_webpages"]))
+            if "Webpages:" in html_line:  # check for series webpages, if any
+                properties["series_webpages"] = html_line.split("Webpages:", 1)[
+                    1
+                ].strip()
+                if prefs["log_level"] in "DEBUG":
+                    log.debug(
+                        'properties["series_webpages"]={0}'.format(
+                            properties["series_webpages"]
+                        )
+                    )
                 # ToDo: Extract URL
                 break
 
-        if properties["main_series"] == '':
+        if properties["main_series"] == "":
             full_series = properties["series"]
         else:
             # Managing calibre sub-groups: https://manual.calibre-ebook.com/de/sub_groups.html
             if prefs["combine_series"]:
-                full_series = properties["main_series"] + prefs["combine_series_with"] + properties["series"]
+                full_series = (
+                    properties["main_series"]
+                    + prefs["combine_series_with"]
+                    + properties["series"]
+                )
             else:
                 full_series = properties["main_series"]
-        if prefs['log_level'] in 'DEBUG':
-            log.debug('full_series={0}'.format(full_series))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("full_series={0}".format(full_series))
         return full_series
 
 
