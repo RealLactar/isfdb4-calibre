@@ -370,34 +370,6 @@ class ISFDB4(Source):
                 "vol_and_no": "Use volume and issue number (vol.no)",
                 "issue_no_only": "use issue number only (no.0)",
             },
-            Option(
-                "enable_ai_summary",
-                "bool",
-                False,
-                _("Enable AI summary generation"),
-                _("Generate an AI summary for the book after metadata download."),
-            ),
-            Option(
-                "ai_provider",
-                "string",
-                "openai",
-                _("AI Provider"),
-                _("AI provider name (e.g., openai)."),
-            ),
-            Option(
-                "ai_api_key",
-                "string",
-                "",
-                _("AI API Key"),
-                _("API key for the AI provider."),
-            ),
-            Option(
-                "ai_append_mode",
-                "string",
-                "append",
-                _("AI Comment Mode"),
-                _('Use "append" to append to comments, or "replace" to overwrite.'),
-            ),
         ),
     )
 
