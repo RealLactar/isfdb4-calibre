@@ -371,6 +371,13 @@ class ISFDB4(Source):
                 "issue_no_only": "use issue number only (no.0)",
             },
         ),
+        Option(
+            "enable_ai_summary",
+            "bool",
+            False,
+            _("Enable AI summary generation"),
+            _("Generate an AI summary for the book after metadata download."),
+        ),
     )
 
     # Add built-in identifier types for isfdb (can not be touched by user)
