@@ -1443,7 +1443,13 @@ class Worker(Thread):
             if pub.get("isfdb") and pub.get("isbn"):
                 self.plugin.cache_isbn_to_identifier(pub["isbn"], pub["isfdb"])
 
+            ai_ok, ai_reason = self.plugin.validate_ai_summary_config(self.prefs, self.log)
+            if not ai_ok and ai_reason != "disabled":
+                if self.prefs.get("log_level") in ("DEBUG", "INFO", "ERROR"):
+                    self.log.info(_("AI summary enabled but not running: %s") % ai_reason)
+
             self.plugin.clean_downloaded_metadata(mi)
+
             # self.log.info('Finally formatted metadata={0}'.format(mi))
             # self.log.info(''.join([char * 20 for char in '#']))
             # Put metadata in Calibre's result queue
@@ -1506,3 +1512,32 @@ if __name__ == "__main__":  # tests
         ],
         fail_missing_meta=False,
     )
+
+    @staticmethod
+    def validate_ai_summary_config(prefs, log):
+        """
+        Returns (enabled_and_valid: bool, reason: str)
+        - If AI is disabled -> (False, "disabled")
+        - If enabled but invalid -> (False, "<reason>")
+        - If enabled and valid -> (True, "ok")
+        """
+        try:
+            if not prefs.get("enable_ai_summary", False):
+                return False, "disabled"
+
+            provider = (prefs.get("ai_provider") or "").strip().lower()
+            if provider not in ("openai",):
+                return False, f"unsupported provider: {provider!r}"
+
+            api_key = (prefs.get("ai_api_key") or "").strip()
+            if not api_key:
+                return False, "missing API key"
+
+            append_mode = (prefs.get("ai_append_mode") or "").strip().lower()
+            if append_mode not in ("append", "replace"):
+                return False, f"invalid append mode: {append_mode!r}"
+
+            return True, "ok"
+        except Exception as e:
+            # Never let validation break metadata download
+            return False, f"validation exception: {e!r}"
