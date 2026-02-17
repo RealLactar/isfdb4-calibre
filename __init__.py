@@ -378,6 +378,34 @@ class ISFDB4(Source):
             _("Enable AI summary generation"),
             _("Generate an AI summary for the book after metadata download."),
         ),
+        Option(
+            "ai_provider",
+            "choices",
+            "openai",
+            _("AI provider"),
+            _("Which AI provider to use for summary generation."),
+            choices=[
+                ("openai", _("OpenAI")),
+            ],
+        ),
+        Option(
+            "ai_api_key",
+            "string",
+            "",
+            _("AI API key"),
+            _("API key for the selected AI provider (stored in Calibre preferences)."),
+        ),
+        Option(
+            "ai_append_mode",
+            "choices",
+            "append",
+            _("How to store the AI summary"),
+            _("Choose whether to append to existing comments or replace them."),
+            choices=[
+                ("append", _("Append to existing comments")),
+                ("replace", _("Replace existing comments")),
+            ],
+        ),
     )
 
     # Add built-in identifier types for isfdb (can not be touched by user)
