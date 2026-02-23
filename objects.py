@@ -155,7 +155,21 @@ class ISFDBObject(object):
         except Exception:
             pass
 
-        response = browser.open_novisit(url, timeout=timeout)
+        from urllib.error import HTTPError
+
+        try:
+            response = browser.open_novisit(url, timeout=timeout)
+        except HTTPError as e:
+            # If ISFDB blocks us with 403, warm up session then retry once
+            if getattr(e, "code", None) == 403:
+                try:
+                    browser.open("https://www.isfdb.org/cgi-bin/index.cgi")
+                except Exception:
+                    pass
+                response = browser.open_novisit(url, timeout=timeout)
+            else:
+                raise
+        # response = browser.open_novisit(url, timeout=timeout)
         location = response.geturl()
         raw = response.read()
         raw = raw.decode("iso_8859_1", "ignore")

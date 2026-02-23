@@ -46,6 +46,18 @@ from calibre_plugins.isfdb4.myglobals import LANGUAGES, IDENTIFIER_TYPES, EXTERN
 _ = gettext.gettext  # is already done by load_translations()
 load_translations()
 
+ISFDB_REQUEST_HEADERS = [
+    ("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
+    ("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"),
+    ("Accept-Language", "en-US,en;q=0.9"),
+]
+
+
+def apply_isfdb_headers(browser):
+    try:
+        browser.addheaders = list(ISFDB_REQUEST_HEADERS)
+    except Exception:
+        pass
 
 class ISFDB4(Source):
     name = "ISFDB4"
@@ -419,6 +431,7 @@ class ISFDB4(Source):
 
     def __init__(self, *args, **kwargs):
         super(ISFDB4, self).__init__(*args, **kwargs)
+        apply_isfdb_headers(self.browser)
         self._publication_id_to_title_id_cache = {}
 
     def cache_publication_id_to_title_id(self, isfdb_id, title_id):
@@ -1137,6 +1150,7 @@ class Worker(Thread):
         self.relevance = relevance
         self.plugin = plugin
         self.browser = browser.clone_browser()
+        apply_isfdb_headers(self.browser)
         self.prefs = prefs
 
     def run(self):
