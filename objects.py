@@ -141,6 +141,9 @@ class ISFDBObject(object):
         log.debug("browser.addheaders=%r", getattr(browser, "addheaders", None))
         log.debug("cookiejar=%r", getattr(getattr(browser, "_ua_handlers", None), "__class__", None))
         log.debug("addheaders=%r", getattr(browser, "addheaders", None))
+        browser.addheaders = []
+# OR, if mechanize misbehaves with empty, use:
+        browser.addheaders = [("User-Agent", "calibre")]
         response = browser.open_novisit(url, timeout=timeout)   
         
         location = response.geturl()
