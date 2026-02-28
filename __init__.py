@@ -63,7 +63,7 @@ class ISFDB4(Source):
     name = "ISFDB4"
     description = _("Downloads metadata and covers from ISFDB (https://www.isfdb.org/)")
     author = "Michael Detambel - Forked from Adrianna Pińska's ISFDB2 (https://github.com/confluence/isfdb2-calibre)"
-    version = (1, 4, 12)  # the plugin version number
+    version = (1, 4, 13)  # the plugin version number
     release = "02-09-2026"  # the release date
     calibre = (5, 0, 0)  # the minimum calibre version number
     minimum_calibre_version = (5, 0, 0)

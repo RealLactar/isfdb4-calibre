@@ -3,7 +3,9 @@
 import datetime
 
 # import gettext
+from logging import log
 import re
+from socket import timeout
 from urllib.parse import urlencode, unquote
 
 from lxml import etree
@@ -136,40 +138,11 @@ class ISFDBObject(object):
         if prefs["log_level"] in "DEBUG":
             log.debug("*** Enter ISFDBObject.root_from_url().")
             log.debug("url={0}".format(url))
-
-        # Ensure modern headers to avoid ISFDB 403 blocking
-        try:
-            browser.addheaders = [
-                (
-                    "User-Agent",
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 Safari/537.36",
-                ),
-                (
-                    "Accept",
-                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                ),
-                ("Accept-Language", "en-US,en;q=0.9"),
-            ]
-        except Exception:
-            pass
-
-        from urllib.error import HTTPError
-
-        try:
-            response = browser.open_novisit(url, timeout=timeout)
-        except HTTPError as e:
-            # If ISFDB blocks us with 403, warm up session then retry once
-            if getattr(e, "code", None) == 403:
-                try:
-                    browser.open("https://www.isfdb.org/cgi-bin/index.cgi")
-                except Exception:
-                    pass
-                response = browser.open_novisit(url, timeout=timeout)
-            else:
-                raise
-        # response = browser.open_novisit(url, timeout=timeout)
+        log.debug("browser.addheaders=%r", getattr(browser, "addheaders", None))
+        log.debug("cookiejar=%r", getattr(getattr(browser, "_ua_handlers", None), "__class__", None))
+        log.debug("addheaders=%r", getattr(browser, "addheaders", None))
+        response = browser.open_novisit(url, timeout=timeout)   
+        
         location = response.geturl()
         raw = response.read()
         raw = raw.decode("iso_8859_1", "ignore")
@@ -1321,6 +1294,7 @@ class Publication(Record):
                         if webpage_name == "archive.org":
                             # Get the archive page
                             try:
+                                log.debug("addheaders=%r", getattr(browser, "addheaders", None))
                                 webpage_response = browser.open_novisit(
                                     webpage_url, timeout=timeout
                                 )
@@ -2602,25 +2576,7 @@ class Series(Record):
         if prefs["log_level"] in "DEBUG":
             log.debug("*** Enter Series.root_from_url().")
             log.debug("url={0}".format(url))
-
-        # Ensure modern headers to avoid ISFDB 403 blocking
-        try:
-            browser.addheaders = [
-                (
-                    "User-Agent",
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 Safari/537.36",
-                ),
-                (
-                    "Accept",
-                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                ),
-                ("Accept-Language", "en-US,en;q=0.9"),
-            ]
-        except Exception:
-            pass
-
+        log.debug("addheaders=%r", getattr(browser, "addheaders", None))
         response = browser.open_novisit(url, timeout=timeout)
         location = response.geturl()
         raw = response.read()
