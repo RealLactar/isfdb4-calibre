@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
+from asyncio import log
 import gettext
 import html
+from logging import log
 import re
 import time
 from queue import Queue, Empty
@@ -1281,6 +1283,10 @@ class Worker(Thread):
                 pub = Title.from_url(
                     self.browser, self.url, self.timeout, self.log, self.prefs
                 )
+                if not pub:
+                    if self.prefs["log_level"] in ("DEBUG", "INFO", "ERROR"):
+                        self.log.error(_("Title page parsed but no metadata dict returned for %r") % self.url)
+                    return
                 if self.prefs["log_level"] in "DEBUG":
                     self.log.debug("pub after Title.from_url()={0}".format(pub))
                 # run one delivers:
@@ -1454,7 +1460,13 @@ class Worker(Thread):
                     )
 
             # TODO: do we actually want / need this?
-            if pub.get("isfdb") and pub.get("isbn"):
+            # TODO: do we actually want / need this?
+            if not pub:
+                self.log.debug("No publication info found for title; continuing with title-only metadata.")
+            elif pub.get("isfdb") and pub.get("isbn"):
+                self.plugin.cache_isbn_to_identifier(pub["isbn"], pub["isfdb"])
+            # if pub and pub.get("isfdb") and pub.get("isbn"):
+            # if pub.get("isfdb") and pub.get("isbn"):
                 self.plugin.cache_isbn_to_identifier(pub["isbn"], pub["isfdb"])
 
             ai_ok, ai_reason = self.plugin.validate_ai_summary_config(self.prefs, self.log)
