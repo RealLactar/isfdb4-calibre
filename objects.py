@@ -2127,6 +2127,14 @@ class Title(Record):
 
         location, root = cls.root_from_url(browser, url, timeout, log, prefs)
 
+        # SAFETY: if ContentBox missing, bail early (this is the only legit None/empty case)
+        cb = root.xpath('//div[@class="ContentBox"]')
+        if not cb:
+            log.error("No ContentBox for title url=%s", url)
+            return None  # or {} depending on your caller contract
+
+        detail_div = cb[0]
+
         # Get rid of tooltips
         try:
             for tooltip in root.xpath('//sup[@class="mouseover"]'):
@@ -2568,6 +2576,7 @@ class Title(Record):
                                 "<br />" + _("First published in: ") + pub_info
                             )
                         break
+                    return properties
 
 
 class Series(Record):
