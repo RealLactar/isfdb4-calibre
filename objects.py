@@ -133,23 +133,18 @@ def remove_node(child, keep_content=False):
 
 class ISFDBObject(object):
 
-    @classmethod
-    def root_from_url(cls, browser, url, timeout, log, prefs):
-        if prefs["log_level"] in "DEBUG":
-            log.debug("*** Enter ISFDBObject.root_from_url().")
-            log.debug("url={0}".format(url))
-        log.debug("browser.addheaders=%r", getattr(browser, "addheaders", None))
-        log.debug("cookiejar=%r", getattr(getattr(browser, "_ua_handlers", None), "__class__", None))
-        log.debug("addheaders=%r", getattr(browser, "addheaders", None))
-        browser.addheaders = []
-# OR, if mechanize misbehaves with empty, use:
-        browser.addheaders = [("User-Agent", "calibre")]
-        response = browser.open_novisit(url, timeout=timeout)   
-        
-        location = response.geturl()
-        raw = response.read()
-        raw = raw.decode("iso_8859_1", "ignore")
-        return location, fromstring(clean_ascii_chars(raw))
+@classmethod
+def root_from_url(cls, browser, url, timeout, log, prefs):
+    if prefs["log_level"] in "DEBUG":
+        log.debug("*** Enter ISFDBObject.root_from_url().")
+        log.debug("url={0}".format(url))
+        log.debug("browser.addheaders={0!r}".format(getattr(browser, "addheaders", None)))
+
+    response = browser.open_novisit(url, timeout=timeout)
+    location = response.geturl()
+    raw = response.read()
+    raw = raw.decode("iso_8859_1", "ignore")
+    return location, fromstring(clean_ascii_chars(raw))
 
 
 class SearchResults(ISFDBObject):
@@ -1297,7 +1292,10 @@ class Publication(Record):
                         if webpage_name == "archive.org":
                             # Get the archive page
                             try:
-                                log.debug("addheaders=%r", getattr(browser, "addheaders", None))
+                                log.debug(
+                                    "addheaders=%r",
+                                    getattr(browser, "addheaders", None),
+                                )
                                 webpage_response = browser.open_novisit(
                                     webpage_url, timeout=timeout
                                 )
@@ -2586,9 +2584,12 @@ class Series(Record):
     @classmethod
     def root_from_url(cls, browser, url, timeout, log, prefs):
         if prefs["log_level"] in "DEBUG":
-            log.debug("*** Enter Series.root_from_url().")
+            log.debug("*** Enter ISFDBObject.root_from_url().")
             log.debug("url={0}".format(url))
-        log.debug("addheaders=%r", getattr(browser, "addheaders", None))
+            log.debug(
+                "browser.addheaders={0!r}".format(getattr(browser, "addheaders", None))
+            )
+
         response = browser.open_novisit(url, timeout=timeout)
         location = response.geturl()
         raw = response.read()
