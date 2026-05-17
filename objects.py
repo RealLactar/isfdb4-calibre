@@ -138,9 +138,6 @@ class ISFDBObject(object):
         if prefs["log_level"] in "DEBUG":
             log.debug("*** Enter ISFDBObject.root_from_url().")
             log.debug("url={0}".format(url))
-            log.debug(
-                "browser.addheaders={0!r}".format(getattr(browser, "addheaders", None))
-            )
 
         response = browser.open_novisit(url, timeout=timeout)
         location = response.geturl()
