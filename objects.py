@@ -133,18 +133,20 @@ def remove_node(child, keep_content=False):
 
 class ISFDBObject(object):
 
-@classmethod
-def root_from_url(cls, browser, url, timeout, log, prefs):
-    if prefs["log_level"] in "DEBUG":
-        log.debug("*** Enter ISFDBObject.root_from_url().")
-        log.debug("url={0}".format(url))
-        log.debug("browser.addheaders={0!r}".format(getattr(browser, "addheaders", None)))
+    @classmethod
+    def root_from_url(cls, browser, url, timeout, log, prefs):
+        if prefs["log_level"] in "DEBUG":
+            log.debug("*** Enter ISFDBObject.root_from_url().")
+            log.debug("url={0}".format(url))
+            log.debug(
+                "browser.addheaders={0!r}".format(getattr(browser, "addheaders", None))
+            )
 
-    response = browser.open_novisit(url, timeout=timeout)
-    location = response.geturl()
-    raw = response.read()
-    raw = raw.decode("iso_8859_1", "ignore")
-    return location, fromstring(clean_ascii_chars(raw))
+        response = browser.open_novisit(url, timeout=timeout)
+        location = response.geturl()
+        raw = response.read()
+        raw = raw.decode("iso_8859_1", "ignore")
+        return location, fromstring(clean_ascii_chars(raw))
 
 
 class SearchResults(ISFDBObject):
@@ -2580,21 +2582,6 @@ class Title(Record):
 class Series(Record):
     # URL = 'http://www.isfdb.org/cgi-bin/pe.cgi?'
     URL = "https://www.isfdb.org/cgi-bin/pe.cgi?"
-
-    @classmethod
-    def root_from_url(cls, browser, url, timeout, log, prefs):
-        if prefs["log_level"] in "DEBUG":
-            log.debug("*** Enter ISFDBObject.root_from_url().")
-            log.debug("url={0}".format(url))
-            log.debug(
-                "browser.addheaders={0!r}".format(getattr(browser, "addheaders", None))
-            )
-
-        response = browser.open_novisit(url, timeout=timeout)
-        location = response.geturl()
-        raw = response.read()
-        raw = raw.decode("iso_8859_1", "ignore")
-        return location, fromstring(clean_ascii_chars(raw))
 
     @classmethod
     def url_from_id(cls, title_id):
