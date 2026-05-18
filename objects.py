@@ -26,6 +26,9 @@ from calibre_plugins.isfdb4.myglobals import (
     TRANSLATION_REPLACINGS,
 )
 
+import ssl
+from urllib.request import Request, urlopen
+
 # Activate GETTEXT
 # This works in test file:
 #     import gettext
@@ -39,7 +42,6 @@ load_translations()
 # _ = gettext.gettext  # is already done by load_translations()
 
 prefs = JSONConfig("plugins/ISFDB4")
-
 
 def get_language_name(search_code):
     # for language_name, language_code in myglobals.LANGUAGES.items():
@@ -130,6 +132,30 @@ def remove_node(child, keep_content=False):
     # remove: child
     parent.remove(child)
 
+ISFDB_HTTP_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/146.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+
+def fetch_isfdb_url(url, timeout, log, prefs):
+    if prefs["log_level"] in "DEBUG":
+        log.debug("*** Enter fetch_isfdb_url().")
+        log.debug("url={0}".format(url))
+
+    request = Request(url, headers=ISFDB_HTTP_HEADERS)
+    context = ssl._create_unverified_context()
+
+    response = urlopen(request, timeout=timeout, context=context)
+    location = response.geturl()
+    raw = response.read()
+    raw = raw.decode("iso_8859_1", "ignore")
+    return location, fromstring(clean_ascii_chars(raw))
 
 class ISFDBObject(object):
 
@@ -138,12 +164,9 @@ class ISFDBObject(object):
         if prefs["log_level"] in "DEBUG":
             log.debug("*** Enter ISFDBObject.root_from_url().")
             log.debug("url={0}".format(url))
+            log.debug("Using urllib fetch path, not mechanize.")
 
-        response = browser.open_novisit(url, timeout=timeout)
-        location = response.geturl()
-        raw = response.read()
-        raw = raw.decode("iso_8859_1", "ignore")
-        return location, fromstring(clean_ascii_chars(raw))
+        return fetch_isfdb_url(url, timeout, log, prefs)
 
 
 class SearchResults(ISFDBObject):
@@ -2573,7 +2596,7 @@ class Title(Record):
                                 "<br />" + _("First published in: ") + pub_info
                             )
                         break
-                    return properties
+        return properties
 
 
 class Series(Record):

@@ -48,24 +48,15 @@ from calibre_plugins.isfdb4.myglobals import LANGUAGES, IDENTIFIER_TYPES, EXTERN
 _ = gettext.gettext  # is already done by load_translations()
 load_translations()
 
-ISFDB_REQUEST_HEADERS = [
-    ("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
-    ("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"),
-    ("Accept-Language", "en-US,en;q=0.9"),
-]
-
-
 def apply_isfdb_headers(browser):
-    try:
-        browser.addheaders = list(ISFDB_REQUEST_HEADERS)
-    except Exception:
-        pass
+    browser.addheaders = ISFDB_REQUEST_HEADERS
+    return browser
 
 class ISFDB4(Source):
     name = "ISFDB4"
     description = _("Downloads metadata and covers from ISFDB (https://www.isfdb.org/)")
     author = "Michael Detambel - Forked from Adrianna Pińska's ISFDB2 (https://github.com/confluence/isfdb2-calibre)"
-    version = (1, 4, 13)  # the plugin version number
+    version = (1, 4, 14)  # the plugin version number
     release = "02-09-2026"  # the release date
     calibre = (5, 0, 0)  # the minimum calibre version number
     minimum_calibre_version = (5, 0, 0)
@@ -433,7 +424,6 @@ class ISFDB4(Source):
 
     def __init__(self, *args, **kwargs):
         super(ISFDB4, self).__init__(*args, **kwargs)
-        apply_isfdb_headers(self.browser)
         self._publication_id_to_title_id_cache = {}
 
     def cache_publication_id_to_title_id(self, isfdb_id, title_id):
@@ -1152,7 +1142,6 @@ class Worker(Thread):
         self.relevance = relevance
         self.plugin = plugin
         self.browser = browser.clone_browser()
-        apply_isfdb_headers(self.browser)
         self.prefs = prefs
 
     def run(self):
@@ -1469,10 +1458,10 @@ class Worker(Thread):
             # if pub.get("isfdb") and pub.get("isbn"):
                 self.plugin.cache_isbn_to_identifier(pub["isbn"], pub["isfdb"])
 
-            ai_ok, ai_reason = self.plugin.validate_ai_summary_config(self.prefs, self.log)
-            if not ai_ok and ai_reason != "disabled":
-                if self.prefs.get("log_level") in ("DEBUG", "INFO", "ERROR"):
-                    self.log.info(_("AI summary enabled but not running: %s") % ai_reason)
+#            ai_ok, ai_reason = self.plugin.validate_ai_summary_config(self.prefs, self.log)
+#            if not ai_ok and ai_reason != "disabled":
+#                if self.prefs.get("log_level") in ("DEBUG", "INFO", "ERROR"):
+#                    self.log.info(_("AI summary enabled but not running: %s") % ai_reason)
 
             self.plugin.clean_downloaded_metadata(mi)
 

@@ -1,19 +1,23 @@
+[Metadata Source Plugin] ISFDB4 - Version Version 1.4.14 05-18-2026
+
+- Replaced mechanize page fetches with urllib requests to avoid ISFDB 403 responses under newer Calibre/Python environments.
+
 [Metadata Source Plugin] ISFDB4 - Version Version 1.4.12 02-06-2026
 
-Downloads metadata and covers from the Internet Speculative Fiction Database (http://www.isfdb.org/)
+Downloads metadata and covers from the Internet Speculative Fiction Database ([http://www.isfdb.org/](http://www.isfdb.org/))
 
 The ISFDB database provides a lot of data for sf titles and publications (covers, artists, translations, prices, notes, ...) and references to other sources, compiled by volunteers.
 
-A web search form is available under http://www.isfdb.org/cgi-bin/adv_search_menu.cgi.
-There is also a web API under http://www.isfdb.org/wiki/index.php/Web_API, but this is not in use yet by the plugin, because the interface only supplies a subset of the data.
+A web search form is available under [http://www.isfdb.org/cgi-bin/adv_search_menu.cgi](http://www.isfdb.org/cgi-bin/adv_search_menu.cgi).
+There is also a web API under [http://www.isfdb.org/wiki/index.php/Web_API](http://www.isfdb.org/wiki/index.php/Web_API), but this is not in use yet by the plugin, because the interface only supplies a subset of the data.
 
 The data model distinguishes between titles and publications (connected m:n) and the database has also tables for series, translations, covers, ... 
-A dump for MySQL is available under http://www.isfdb.org/wiki/index.php/ISFDB_Downloads.
+A dump for MySQL is available under [http://www.isfdb.org/wiki/index.php/ISFDB_Downloads](http://www.isfdb.org/wiki/index.php/ISFDB_Downloads).
 
 Background:
 
-This plugin is a fork of Adrianna Pińska's ISFDB2 (see https://github.com/confluence/isfdb2-calibre).
-Adriana explained the very clever structure of her plugin herself in a YouTube video: »Custom metadata plugins for Caliber: cataloging an old paper library« (https://www.youtube.com/watch?v=UF6HAn5-YD0).
+This plugin is a fork of Adrianna Pińska's ISFDB2 (see [https://github.com/confluence/isfdb2-calibre](https://github.com/confluence/isfdb2-calibre)).
+Adriana explained the very clever structure of her plugin herself in a YouTube video: »Custom metadata plugins for Caliber: cataloging an old paper library« ([https://www.youtube.com/watch?v=UF6HAn5-YD0](https://www.youtube.com/watch?v=UF6HAn5-YD0)).
 
 In mid 2021, I forked the codebase and make some changes and additions to the code for my needs.
 Adriana contacted me and wrote: 
@@ -26,22 +30,22 @@ Therefore, I created the plugin ISFDB3 and submitted it to the plugin repository
 
 Main changes compared to ISFDB2:
 
-1) Different search strategy for publications
-2) Avoids mixing of identical titles by Calibre 
+1. Different search strategy for publications
+2. Avoids mixing of identical titles by Calibre
 
 To 1): ISFDB2 searches publications (if no ID is available) with the specified title and author. Publications are only found if they have the same search term as the title (i.e. have the same name).
 ISFDB3 uses the list of publications in the title record and follows the links. So it may also find publications that contain the title (usually a short story) but have a different name, i.e. anthologies, magazines, ...
 Extreme example: H. P. Lovecraft, In the Vault. ISFDB2 finds one title and no publications, ISFDB3 95 publications with this story.
 Another example: Publications are not found by ISFDB2, if the title/publication pair as only a slightly different spelling:
-Title: Best S.F. Stories from New Worlds (http://www.isfdb.org/cgi-bin/title.cgi?36317), but publication reads: Publication: Best S.F. Stories from New Worlds (http://www.isfdb.org/cgi-bin/pl.cgi?35921).
+Title: Best S.F. Stories from New Worlds ([http://www.isfdb.org/cgi-bin/title.cgi?36317](http://www.isfdb.org/cgi-bin/title.cgi?36317)), but publication reads: Publication: Best S.F. Stories from New Worlds ([http://www.isfdb.org/cgi-bin/pl.cgi?35921](http://www.isfdb.org/cgi-bin/pl.cgi?35921)).
 
 To 2): Calibre's default behavior merges titles and publications with the same author and title in one result, regardless of other data (publication date, series, publisher, ...).
 Therefore, to preserve all search results, ISFDB3 qualifies the title field with the ISFDB ID before put it in the result queue.
 Example: K. H. Scheer, Expedition. The title was published six times in the years 1961–1980, in different series and adaptations. ISFDB2 returns only one publication, ISFDB3 all.
 Other example (H. P. Lovecraft, In the Vault):
 title list has two title records (in ISFDB2 there are merged to one):
-title record one: http://www.isfdb.org/cgi-bin/title.cgi?2946687 -> pub record http://www.isfdb.org/cgi-bin/pl.cgi?868274
-title record two: http://www.isfdb.org/cgi-bin/title.cgi?41896 -> a lot of pub records!
+title record one: [http://www.isfdb.org/cgi-bin/title.cgi?2946687](http://www.isfdb.org/cgi-bin/title.cgi?2946687) -> pub record [http://www.isfdb.org/cgi-bin/pl.cgi?868274](http://www.isfdb.org/cgi-bin/pl.cgi?868274)
+title record two: [http://www.isfdb.org/cgi-bin/title.cgi?41896](http://www.isfdb.org/cgi-bin/title.cgi?41896) -> a lot of pub records!
 
 As a drawback, the qualifier in the title field has to be deleted manually or with a search-and-replace regex. 
 And another: You probably need to increase the runtime for the plugin ("Configure Metadata Download" button).
@@ -73,12 +77,13 @@ Limitations:
 
 - Since there is no language field in publication records, only in title records, following the publication links in a title list may show up publications in not desired languages. However, the publications list in the title page has a button »Not displaying translations«, so some research is already needed.
 - Some time ago, isfdb.org blocked advanced search access for non-logged-in users.
-  ISFDB3 has a fallback to simple search with title only and a filter for irrelevant record types (INTERIORART, ...) and author(s).
-  To avoid large title lists for short or generic titles ("Stars") with the default "contains" search, the search is switched to "exact match", if the first character in the title field is an equal sign ("=").
-  However, there is a risk of a timeout, as a simple search often returns thousands of titles (a search for "The House" by H. P. Lovecraft returns 3,124 results, since all titles with this phrase are returned and the author is ignored), so the filters may not work.
+ISFDB3 has a fallback to simple search with title only and a filter for irrelevant record types (INTERIORART, ...) and author(s).
+To avoid large title lists for short or generic titles ("Stars") with the default "contains" search, the search is switched to "exact match", if the first character in the title field is an equal sign ("=").
+However, there is a risk of a timeout, as a simple search often returns thousands of titles (a search for "The House" by H. P. Lovecraft returns 3,124 results, since all titles with this phrase are returned and the author is ignored), so the filters may not work.
 
 Version History:
 Version 1.4.12 02-09-2026
+
 - Regex for series index search in notes enhanced.
 Version 1.4.11 02-06-2026
 - If no volume/number found in isfdb.org pub page, try the resource web page, if given (at the moment only for archive.org)
@@ -88,7 +93,7 @@ Version 1.4.10 01-15-2026
 Version 1.4.9 01-11-2026
 - Don't use title tokens for search yet.
 - Record type COVERART is no longer ignored in title search (Sometimes there is no other record
-  which directs to the pub record.)
+which directs to the pub record.)
 Version 1.4.8 10-14-2025
 - Corrects a regression that generates a false series index.
 Version 1.4.7 10-05-2025
@@ -103,10 +108,10 @@ Version 1.4.4 09-19-2025
 Version 1.4.3 09-07-2025
 - Regex for series index search in notes enhanced.
 - If series name is given, but no volume and/or issue at all, series index is constructed with
-  the publication date (year,month).
+the publication date (year,month).
 Version 1.4.2 05-29-2025
 - Downloaded metadata sets the series but not the number within the series, if the series number is only given 
-  in Notes ("Notes: Vol. 17, No. 5" or "Vol. 4, No. 3. Issue 22"). Thanks to Ross Presser (rpresser).
+in Notes ("Notes: Vol. 17, No. 5" or "Vol. 4, No. 3. Issue 22"). Thanks to Ross Presser (rpresser).
 Version 1.4.1 09-19-2024
 - Copy publications type to tags (same treatment as for title type).
 - Enhanced treatment of ISB numbers (fetching both ISBN 10 and 13 for a publication, if given)
@@ -118,19 +123,19 @@ Version 1.4.0 06-01-2024
 - Title template in options to build custom titles.
 Version 1.3.0 03-16-2024
 - Extended exact search for generic titles:
-  In simple search, all parameters except 'arg' and 'type' are ignored: https://www.isfdb.org/cgi-bin/se.cgi?arg=STONE&type=Fiction+Titles
-  A search for 'STONE' found 3720 matches.
-  The first 300 matches are displayed below. -- no chance for simple or generic titles
+In simple search, all parameters except 'arg' and 'type' are ignored: [https://www.isfdb.org/cgi-bin/se.cgi?arg=STONE&type=Fiction+Titles](https://www.isfdb.org/cgi-bin/se.cgi?arg=STONE&type=Fiction+Titles)
+A search for 'STONE' found 3720 matches.
+The first 300 matches are displayed below. -- no chance for simple or generic titles
 Version 1.2.2 03-30-2023
 - When pub was found with only publication ID, no title ID was cached, so an unnecessary title search was fired.
-  Solved by parse "ContentBox 2" for title link in pub record. 
+Solved by parse "ContentBox 2" for title link in pub record. 
 Version 1.2.1 03-19-2023
 - Installing error when using locale.getdefaultlocale(). Changed to locale.getlocale() with fallback to 'en_US'.
-  Thanks to andytinkham for the error report.
+Thanks to andytinkham for the error report.
 Version 1.2.0 03-12-2023
 - New: Fetch all identifier types from ISFDB publication page.
 - New: In simple search mode, very short or generic titles returns a lot of title and/or pub records.
-  '=' as the first character in title fields raises an exact title search.
+'=' as the first character in title fields raises an exact title search.
 - Translation of ISFDB pages text as an option started (very experimental at the moment).
 - Handling of unwanted tags fixed.
 - New: Handling of ratings.
@@ -143,7 +148,7 @@ Version 1.1.4 11-30-2022
 - Handling redirection to a title page, if only one title record found.
 Version 1.1.3 11-15-2022
 - In simple search, to filter authors from title list, unquote the author's name from URL
-  (convert percent encoded characters back).
+(convert percent encoded characters back).
 Version 1.1.2 07-14-2022
 - Comparing author in simple search case-insensitive.
 Version 1.1.1 07-13-2022
@@ -162,8 +167,8 @@ Version 1.0.0 - 01-31-2022
 - Initial release.
 
 Installation:
-Download the attached zip file and install the plugin as described in the Introduction to plugins thread (https://www.mobileread.com/forums/showthread.php?t=118680).
+Download the attached zip file and install the plugin as described in the Introduction to plugins thread ([https://www.mobileread.com/forums/showthread.php?t=118680](https://www.mobileread.com/forums/showthread.php?t=118680)).
 The plugin is also available in Calibre's plugin updater.
 
 How to report bugs and suggestions:
-If you find any issues, please report them in the thread on the MobileRead website or at GitHub: https://github.com/bertholdm/isfdb3-calibre.
+If you find any issues, please report them in the thread on the MobileRead website or at GitHub: [https://github.com/bertholdm/isfdb3-calibre](https://github.com/bertholdm/isfdb3-calibre).
