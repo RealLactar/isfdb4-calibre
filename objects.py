@@ -610,23 +610,25 @@ class TitleList(SearchResults):
         if prefs["log_level"] in "DEBUG":
             log.debug("title_dict={0}".format(title_dict))
 
-        title = title_dict["Title:"]
+#        title = title_dict["Title:"]
+        title = title_dict["Title"]
+
         year = title_dict["Year:"]
 
-        if title:
-            field += 1
-            # For very short titles there ist a possible marker '=' as the first character in title field
-            if prefs["exact_search"]:
-                operator = "exact"
-            else:
-                operator = "contains"
-            params.update(
-                {
-                    "USE_%d" % field: "title_title",
-                    "OPERATOR_%d" % field: operator,
-                    "ARG": title + " - " + year,
-                }
-            )
+#        if title
+#            field += 1
+#            # For very short titles there ist a possible marker '=' as the first character in title field
+#            if prefs["exact_search"]:
+#                operator = "exact"
+#            else:
+#                operator = "contains"
+#            params.update(
+#                {
+#                    "USE_%d" % field: "title_title",
+#                    "OPERATOR_%d" % field: operator,
+#                    "ARG": title + " - " + year,
+#                }
+#            )
 
         # https://www.isfdb.org/cgi-bin/se.cgi?arg=The+Magazine+of+Fantasy+and+Science+Fiction&type=Magazine
         # -> Series: The Magazine of Fantasy and Science Fiction
