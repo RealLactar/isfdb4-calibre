@@ -588,6 +588,13 @@ class ISFDB4(Source):
             # Never let validation break metadata download
             return False, f"validation exception: {e!r}"
 
+    def enrich_metadata_with_ai_summary(self, mi, prefs, log):
+        if prefs["log_level"] in "DEBUG":
+            log.debug(
+                "enrich_metadata_with_ai_summary called for title: {0}".format(mi.title)
+            )
+        return mi
+
     def identify(
         self,
         log,
@@ -1486,12 +1493,37 @@ class Worker(Thread):
             # if pub.get("isfdb") and pub.get("isbn"):
                 self.plugin.cache_isbn_to_identifier(pub["isbn"], pub["isfdb"])
 
-#            ai_ok, ai_reason = self.plugin.validate_ai_summary_config(self.prefs, self.log)
-#            if not ai_ok and ai_reason != "disabled":
-#                if self.prefs.get("log_level") in ("DEBUG", "INFO", "ERROR"):
-#                    self.log.info(_("AI summary enabled but not running: %s") % ai_reason)
-
             self.plugin.clean_downloaded_metadata(mi)
+
+            try:
+                ai_ok, ai_reason = self.plugin.validate_ai_summary_config(
+                    self.prefs, self.log
+                )
+                if ai_ok:
+                    if self.prefs.get("log_level") == "DEBUG":
+                        self.log.debug(
+                            "AI summary enrichment starting for title: {0}".format(
+                                mi.title
+                            )
+                        )
+                    mi = self.plugin.enrich_metadata_with_ai_summary(
+                        mi, self.prefs, self.log
+                    )
+                    if self.prefs.get("log_level") == "DEBUG":
+                        self.log.debug(
+                            "AI summary enrichment completed for title: {0}".format(
+                                mi.title
+                            )
+                        )
+                elif self.prefs.get("log_level") == "DEBUG":
+                    self.log.debug(
+                        "AI summary not run ({0})".format(ai_reason)
+                    )
+            except Exception as e:
+                if self.prefs.get("log_level") in ("DEBUG", "INFO", "ERROR"):
+                    self.log.exception(
+                        _("AI summary failed for title %r: %r") % (mi.title, e)
+                    )
 
             # self.log.info('Finally formatted metadata={0}'.format(mi))
             # self.log.info(''.join([char * 20 for char in '#']))
