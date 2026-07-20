@@ -144,14 +144,16 @@ ISFDB_HTTP_HEADERS = {
 
 
 def fetch_isfdb_url(url, timeout, log, prefs):
+    effective_timeout = max(timeout, 90)
     if prefs["log_level"] in "DEBUG":
         log.debug("*** Enter fetch_isfdb_url().")
         log.debug("url={0}".format(url))
+        log.debug("timeout={0}, effective_timeout={1}".format(timeout, effective_timeout))
 
     request = Request(url, headers=ISFDB_HTTP_HEADERS)
     context = ssl._create_unverified_context()
 
-    response = urlopen(request, timeout=timeout, context=context)
+    response = urlopen(request, timeout=effective_timeout, context=context)
     location = response.geturl()
     raw = response.read()
     raw = raw.decode("iso_8859_1", "ignore")
