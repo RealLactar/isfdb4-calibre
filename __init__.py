@@ -560,6 +560,34 @@ class ISFDB4(Source):
                     )
             mi.title = custom_title
 
+    def validate_ai_summary_config(self, prefs, log):
+        """
+        Returns (enabled_and_valid: bool, reason: str)
+        - If AI is disabled -> (False, "disabled")
+        - If enabled but invalid -> (False, "<reason>")
+        - If enabled and valid -> (True, "ok")
+        """
+        try:
+            if not prefs.get("enable_ai_summary", False):
+                return False, "disabled"
+
+            provider = (prefs.get("ai_provider") or "").strip().lower()
+            if provider not in ("openai",):
+                return False, f"unsupported provider: {provider!r}"
+
+            api_key = (prefs.get("ai_api_key") or "").strip()
+            if not api_key:
+                return False, "missing API key"
+
+            append_mode = (prefs.get("ai_append_mode") or "").strip().lower()
+            if append_mode not in ("append", "replace"):
+                return False, f"invalid append mode: {append_mode!r}"
+
+            return True, "ok"
+        except Exception as e:
+            # Never let validation break metadata download
+            return False, f"validation exception: {e!r}"
+
     def identify(
         self,
         log,
@@ -1527,32 +1555,3 @@ if __name__ == "__main__":  # tests
         ],
         fail_missing_meta=False,
     )
-
-    @staticmethod
-    def validate_ai_summary_config(prefs, log):
-        """
-        Returns (enabled_and_valid: bool, reason: str)
-        - If AI is disabled -> (False, "disabled")
-        - If enabled but invalid -> (False, "<reason>")
-        - If enabled and valid -> (True, "ok")
-        """
-        try:
-            if not prefs.get("enable_ai_summary", False):
-                return False, "disabled"
-
-            provider = (prefs.get("ai_provider") or "").strip().lower()
-            if provider not in ("openai",):
-                return False, f"unsupported provider: {provider!r}"
-
-            api_key = (prefs.get("ai_api_key") or "").strip()
-            if not api_key:
-                return False, "missing API key"
-
-            append_mode = (prefs.get("ai_append_mode") or "").strip().lower()
-            if append_mode not in ("append", "replace"):
-                return False, f"invalid append mode: {append_mode!r}"
-
-            return True, "ok"
-        except Exception as e:
-            # Never let validation break metadata download
-            return False, f"validation exception: {e!r}"
