@@ -2,7 +2,6 @@
 
 from asyncio import log
 import gettext
-import html
 from logging import log
 import re
 import time
@@ -11,7 +10,6 @@ from threading import Thread
 
 from calibre.ebooks.metadata import (
     check_isbn,
-    authors_to_string,
     author_to_author_sort,
     title_sort,
 )
@@ -376,41 +374,6 @@ class ISFDB4(Source):
                 "issue_no_only": "use issue number only (no.0)",
             },
         ),
-        Option(
-            "enable_ai_summary",
-            "bool",
-            False,
-            _("Enable AI summary generation"),
-            _("Generate an AI summary for the book after metadata download."),
-        ),
-        Option(
-            "ai_provider",
-            "choices",
-            "openai",
-            _("AI provider"),
-            _("Which AI provider to use for summary generation."),
-            {
-                "openai": _("OpenAI"),
-            },
-        ),
-        Option(
-            "ai_api_key",
-            "string",
-            "",
-            _("AI API key"),
-            _("API key for the selected AI provider (stored in Calibre preferences)."),
-        ),
-        Option(
-            "ai_append_mode",
-            "choices",
-            "append",
-            _("How to store the AI summary"),
-            _("Choose whether to append to existing comments or replace them."),
-            {
-                "append": _("Append to existing comments"),
-                "replace": _("Replace existing comments"),
-            },
-        ),
     )
 
     # Add built-in identifier types for isfdb (can not be touched by user)
@@ -559,41 +522,6 @@ class ISFDB4(Source):
                         "{series_index}", str(mi.series_index).strip()
                     )
             mi.title = custom_title
-
-    def validate_ai_summary_config(self, prefs, log):
-        """
-        Returns (enabled_and_valid: bool, reason: str)
-        - If AI is disabled -> (False, "disabled")
-        - If enabled but invalid -> (False, "<reason>")
-        - If enabled and valid -> (True, "ok")
-        """
-        try:
-            if not prefs.get("enable_ai_summary", False):
-                return False, "disabled"
-
-            provider = (prefs.get("ai_provider") or "").strip().lower()
-            if provider not in ("openai",):
-                return False, f"unsupported provider: {provider!r}"
-
-            api_key = (prefs.get("ai_api_key") or "").strip()
-            if not api_key:
-                return False, "missing API key"
-
-            append_mode = (prefs.get("ai_append_mode") or "").strip().lower()
-            if append_mode not in ("append", "replace"):
-                return False, f"invalid append mode: {append_mode!r}"
-
-            return True, "ok"
-        except Exception as e:
-            # Never let validation break metadata download
-            return False, f"validation exception: {e!r}"
-
-    def enrich_metadata_with_ai_summary(self, mi, prefs, log):
-        if prefs["log_level"] in "DEBUG":
-            log.debug(
-                "enrich_metadata_with_ai_summary called for title: {0}".format(mi.title)
-            )
-        return mi
 
     def identify(
         self,
@@ -1494,36 +1422,6 @@ class Worker(Thread):
                 self.plugin.cache_isbn_to_identifier(pub["isbn"], pub["isfdb"])
 
             self.plugin.clean_downloaded_metadata(mi)
-
-            try:
-                ai_ok, ai_reason = self.plugin.validate_ai_summary_config(
-                    self.prefs, self.log
-                )
-                if ai_ok:
-                    if self.prefs.get("log_level") == "DEBUG":
-                        self.log.debug(
-                            "AI summary enrichment starting for title: {0}".format(
-                                mi.title
-                            )
-                        )
-                    mi = self.plugin.enrich_metadata_with_ai_summary(
-                        mi, self.prefs, self.log
-                    )
-                    if self.prefs.get("log_level") == "DEBUG":
-                        self.log.debug(
-                            "AI summary enrichment completed for title: {0}".format(
-                                mi.title
-                            )
-                        )
-                elif self.prefs.get("log_level") == "DEBUG":
-                    self.log.debug(
-                        "AI summary not run ({0})".format(ai_reason)
-                    )
-            except Exception as e:
-                if self.prefs.get("log_level") in ("DEBUG", "INFO", "ERROR"):
-                    self.log.exception(
-                        _("AI summary failed for title %r: %r") % (mi.title, e)
-                    )
 
             # self.log.info('Finally formatted metadata={0}'.format(mi))
             # self.log.info(''.join([char * 20 for char in '#']))
