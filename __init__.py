@@ -387,6 +387,14 @@ class ISFDB4(Source):
 
     def __init__(self, *args, **kwargs):
         super(ISFDB4, self).__init__(*args, **kwargs)
+        for obsolete_key in (
+            "enable_ai_summary",
+            "ai_provider",
+            "ai_api_key",
+            "ai_append_mode",
+        ):
+            if obsolete_key in self.prefs:
+                del self.prefs[obsolete_key]
         self._publication_id_to_title_id_cache = {}
 
     def cache_publication_id_to_title_id(self, isfdb_id, title_id):
@@ -475,6 +483,87 @@ class ISFDB4(Source):
             for author_token in author.split():
                 yield author_token
 
+    @staticmethod
+    def _normalize_collision_component(value):
+        if value is None:
+            return ""
+        return " ".join(str(value).split()).casefold()
+
+    @classmethod
+    def _metadata_collision_key(cls, mi):
+        authors = []
+        for author in mi.authors or []:
+            normalized_author = cls._normalize_collision_component(author)
+            if normalized_author:
+                authors.append(normalized_author)
+        return (
+            cls._normalize_collision_component(mi.title),
+            tuple(authors),
+        )
+
+    @staticmethod
+    def _metadata_isfdb_identity(mi, source_url=None, fallback_number=None):
+        publication_id = mi.identifiers.get("isfdb")
+        if publication_id:
+            return ("pub", str(publication_id).strip()), None
+        title_id = mi.identifiers.get("isfdb-title")
+        if title_id:
+            return ("title", str(title_id).strip()), None
+
+        match = re.search(r"/(pl|title)\.cgi\?(\d+)(?:$|[&#])", source_url or "")
+        if match:
+            identity_type = "pub" if match.group(1) == "pl" else "title"
+            return (identity_type, match.group(2)), "worker URL"
+
+        return ("result", str(fallback_number)), "completion order"
+
+    def _qualify_colliding_results(self, results, log):
+        # Keep ordinary titles clean, but qualify distinct ISFDB records that
+        # Calibre would otherwise merge on their normalized title and authors.
+        groups = {}
+        for result in results:
+            mi, source_url = result
+            groups.setdefault(self._metadata_collision_key(mi), []).append(result)
+
+        for collision_key, group in groups.items():
+            if len(group) <= 1:
+                continue
+
+            resolved = []
+            for fallback_number, (mi, source_url) in enumerate(group, 1):
+                identity, fallback = self._metadata_isfdb_identity(
+                    mi, source_url, fallback_number
+                )
+                resolved.append((mi, identity))
+                if fallback and self.prefs["log_level"] in "DEBUG":
+                    log.debug(
+                        "Metadata collision identity missing; using {0} fallback {1} for title {2!r}".format(
+                            fallback, identity, mi.title
+                        )
+                    )
+
+            identities = {identity for mi, identity in resolved}
+            if len(identities) <= 1:
+                continue
+
+            if self.prefs["log_level"] in "DEBUG":
+                log.debug(
+                    "Qualifying metadata collision: key={0}, identities={1}".format(
+                        collision_key, sorted(identities)
+                    )
+                )
+
+            for mi, identity in resolved:
+                identity_type, identity_value = identity
+                identity_label = {"pub": "Pub", "title": "Title"}.get(
+                    identity_type, identity_type.title()
+                )
+                mi.title = "{0} ({1} #{2})".format(
+                    mi.title, identity_label, identity_value
+                )
+                if self.prefs["log_level"] in "DEBUG":
+                    log.debug("Qualified colliding metadata title: {0}".format(mi.title))
+
     def clean_downloaded_metadata(self, mi):
         """
         Call this method in your plugin's identify method to normalize metadata
@@ -553,13 +642,13 @@ class ISFDB4(Source):
 
         # For very short or generic titles ('The Sky') one may set the marker '=' as first character in title field
         self.prefs["exact_search"] = False
-        log.debug("self.prefs={0}".format(self.prefs))
+        log.debug("Preference keys={0}".format(sorted(self.prefs.keys())))
         if title:
             if title[0] == "=":
                 self.prefs["exact_search"] = True
                 title = title[1:]
                 log.debug("title={0}".format(title))
-                log.debug("self.prefs={0}".format(self.prefs))
+                log.debug("Exact title search enabled.")
 
         matches = set()  # A tuple of (page url, relevance)
 
@@ -709,45 +798,50 @@ class ISFDB4(Source):
                                 ).format(self.prefs["max_results"])
                             )
                             break
-                        ######################################################################
-                        # Fetch all linked pub records for this title,                       #
-                        # even if the book title is not identical with the publication title #
-                        ######################################################################
-                        stub_with_pubs = Title.from_url(
-                            self.browser, stub["url"], timeout, log, self.prefs
-                        )
-                        if self.prefs["log_level"] in "DEBUG":
-                            log.debug(
-                                "stub_with_pubs after Title.from_url()={0}".format(
-                                    stub_with_pubs
-                                )
+                        # Linked publication expansion honors the same preference as
+                        # the separate publication search.
+                        if self.prefs["search_publications"]:
+                            ######################################################################
+                            # Fetch all linked pub records for this title,                       #
+                            # even if the book title is not identical with the publication title #
+                            ######################################################################
+                            stub_with_pubs = Title.from_url(
+                                self.browser, stub["url"], timeout, log, self.prefs
                             )
-                        if self.prefs["log_level"] in ("DEBUG", "INFO"):
-                            log.info(_("Fetching all linked pub records..."))
-                        for pubno in stub_with_pubs["publications"]:
-                            # We have a publication id and a title id, so cache the title id
-                            self.cache_publication_id_to_title_id(
-                                pubno, stub_with_pubs["isfdb-title"]
-                            )
-                            # If the title found in isfdb's title record is identical to the metadata title,
-                            # promote this title record
-                            relevance = 2
-                            # if stripped(stub["title"]) == stripped(title):  # ???
-                            if stub["title"].strip() == title.strip():
-                                relevance = 0
-                            url = Publication.url_from_id(pubno)
-                            matches.add((url, relevance))
                             if self.prefs["log_level"] in "DEBUG":
                                 log.debug(
-                                    "Add match from publications list: {0}.".format(url)
+                                    "stub_with_pubs after Title.from_url()={0}".format(
+                                        stub_with_pubs
+                                    )
                                 )
-                            if len(matches) >= self.prefs["max_results"]:
-                                log.info(
-                                    _(
-                                        "Search for Pubs aborted because max. results are reached: {0}."
-                                    ).format(self.prefs["max_results"])
+                            if self.prefs["log_level"] in ("DEBUG", "INFO"):
+                                log.info(_("Fetching all linked pub records..."))
+                            for pubno in stub_with_pubs["publications"]:
+                                # We have a publication id and a title id, so cache the title id
+                                self.cache_publication_id_to_title_id(
+                                    pubno, stub_with_pubs["isfdb-title"]
                                 )
-                                break
+                                # If the title found in isfdb's title record is identical to the metadata title,
+                                # promote this title record
+                                relevance = 2
+                                # if stripped(stub["title"]) == stripped(title):  # ???
+                                if stub["title"].strip() == title.strip():
+                                    relevance = 0
+                                url = Publication.url_from_id(pubno)
+                                matches.add((url, relevance))
+                                if self.prefs["log_level"] in "DEBUG":
+                                    log.debug(
+                                        "Add match from publications list: {0}.".format(
+                                            url
+                                        )
+                                    )
+                                if len(matches) >= self.prefs["max_results"]:
+                                    log.info(
+                                        _(
+                                            "Search for Pubs aborted because max. results are reached: {0}."
+                                        ).format(self.prefs["max_results"])
+                                    )
+                                    break
 
             else:
 
@@ -837,59 +931,62 @@ class ISFDB4(Source):
                                 )
                                 break
 
-                            ######################################################################
-                            # Fetch all linked pub records for this title,                       #
-                            # even if the book title is not identical with the publication title #
-                            ######################################################################
+                            # Linked publication expansion honors the same preference as
+                            # the separate publication search.
+                            if self.prefs["search_publications"]:
+                                ######################################################################
+                                # Fetch all linked pub records for this title,                       #
+                                # even if the book title is not identical with the publication title #
+                                ######################################################################
 
-                            stub_with_pubs = Title.from_url(
-                                self.browser, stub["url"], timeout, log, self.prefs
-                            )
-                            if self.prefs["log_level"] in "DEBUG":
-                                log.debug(
-                                    "stub_with_pubs after Title.from_url()={0}".format(
-                                        stub_with_pubs
-                                    )
+                                stub_with_pubs = Title.from_url(
+                                    self.browser, stub["url"], timeout, log, self.prefs
                                 )
-                            # stub one delivers:
-                            # {'isfdb-title': '2946687', 'title': 'In the Vault', 'authors': ['H. P. Lovecraft'],
-                            # 'pubdate': datetime.datetime(2018, 1, 1, 2, 0), 'type': 'SHORTFICTION', 'tags': ['short fiction'],
-                            # 'language': 'eng', 'comments': '<br />Quelle: http://www.isfdb.org/cgi-bin/title.cgi?2946687',
-                            # 'publications': ['868274']}
-                            # stub two delivers:
-                            # {'isfdb-title': '41896', 'title': 'In the Vault', 'authors': ['H. P. Lovecraft'],
-                            # 'pubdate': datetime.datetime(1925, 11, 1, 2, 0), 'type': 'SHORTFICTION', 'tags': ['short fiction', 'short story', 'horror', 'cemetery', 'thriller'],
-                            # 'length': 'short story', 'webpages': 'http://en.wikipedia.org/wiki/In_the_Vault', 'language': 'eng',
-                            # 'comments': '<br />Quelle: http://www.isfdb.org/cgi-bin/title.cgi?41896',
-                            # 'publications': ['706981', '61879', '273106', '618032', '44960', '359388', '618034', '297445', '297440', '367691', '302799', '309509', '18059', '11658', '38934', '145971', '282647', '248690', '306035', '237633', '120561', '282648', '591894', '237637', '564083', '609374', '282649', '309179', '264815', '682730', '423983', '396460', '824200', '416243', '359195', '38935', '789800', '391376', '35792', '282521', '282721', '282522', '308779', '601355', '170301', '185181', '35793', '359410', '282722', '303253', '78446', '65445', '277217', '64078', '567162', '791582', '555987', '379243', '325738', '287198', '249955', '446578', '293057', '356003', '332409', '374550', '469219', '570586', '463546', '531112', '529150', '593595', '774732', '579248', '623804', '623778', '648278', '776874', '776870', '666333', '765111', '779323', '745178', '805986', '806173', '239285', '288973', '352022', '431714', '506197', '511485', '514714', '560685', '855800', '706744', '708866']}
-                            # Fetching all linked pub records
-                            if self.prefs["log_level"] in ("DEBUG", "INFO"):
-                                log.info(_("Fetching all linked pub records..."))
-                            for pubno in stub_with_pubs["publications"]:
-                                # We have a publication id and a title id, so cache the title id
-                                self.cache_publication_id_to_title_id(
-                                    pubno, stub_with_pubs["isfdb-title"]
-                                )
-                                # If the title found in isfdb's title record is identical to the metadata title,
-                                # promote this title record
-                                relevance = 2
-                                if stripped(stub["title"]) == stripped(title):
-                                    relevance = 0
-                                url = Publication.url_from_id(pubno)
-                                matches.add((url, relevance))
                                 if self.prefs["log_level"] in "DEBUG":
                                     log.debug(
-                                        "Add match from publications list: {0}.".format(
-                                            url
+                                        "stub_with_pubs after Title.from_url()={0}".format(
+                                            stub_with_pubs
                                         )
                                     )
-                                if len(matches) >= self.prefs["max_results"]:
-                                    log.info(
-                                        _(
-                                            "Search for Pubs aborted because max. results are reached: {0}."
-                                        ).format(self.prefs["max_results"])
+                                # stub one delivers:
+                                # {'isfdb-title': '2946687', 'title': 'In the Vault', 'authors': ['H. P. Lovecraft'],
+                                # 'pubdate': datetime.datetime(2018, 1, 1, 2, 0), 'type': 'SHORTFICTION', 'tags': ['short fiction'],
+                                # 'language': 'eng', 'comments': '<br />Quelle: http://www.isfdb.org/cgi-bin/title.cgi?2946687',
+                                # 'publications': ['868274']}
+                                # stub two delivers:
+                                # {'isfdb-title': '41896', 'title': 'In the Vault', 'authors': ['H. P. Lovecraft'],
+                                # 'pubdate': datetime.datetime(1925, 11, 1, 2, 0), 'type': 'SHORTFICTION', 'tags': ['short fiction', 'short story', 'horror', 'cemetery', 'thriller'],
+                                # 'length': 'short story', 'webpages': 'http://en.wikipedia.org/wiki/In_the_Vault', 'language': 'eng',
+                                # 'comments': '<br />Quelle: http://www.isfdb.org/cgi-bin/title.cgi?41896',
+                                # 'publications': ['706981', '61879', '273106', '618032', '44960', '359388', '618034', '297445', '297440', '367691', '302799', '309509', '18059', '11658', '38934', '145971', '282647', '248690', '306035', '237633', '120561', '282648', '591894', '237637', '564083', '609374', '282649', '309179', '264815', '682730', '423983', '396460', '824200', '416243', '359195', '38935', '789800', '391376', '35792', '282521', '282721', '282522', '308779', '601355', '170301', '185181', '35793', '359410', '282722', '303253', '78446', '65445', '277217', '64078', '567162', '791582', '555987', '379243', '325738', '287198', '249955', '446578', '293057', '356003', '332409', '374550', '469219', '570586', '463546', '531112', '529150', '593595', '774732', '579248', '623804', '623778', '648278', '776874', '776870', '666333', '765111', '779323', '745178', '805986', '806173', '239285', '288973', '352022', '431714', '506197', '511485', '514714', '560685', '855800', '706744', '708866']}
+                                # Fetching all linked pub records
+                                if self.prefs["log_level"] in ("DEBUG", "INFO"):
+                                    log.info(_("Fetching all linked pub records..."))
+                                for pubno in stub_with_pubs["publications"]:
+                                    # We have a publication id and a title id, so cache the title id
+                                    self.cache_publication_id_to_title_id(
+                                        pubno, stub_with_pubs["isfdb-title"]
                                     )
-                                    break
+                                    # If the title found in isfdb's title record is identical to the metadata title,
+                                    # promote this title record
+                                    relevance = 2
+                                    if stripped(stub["title"]) == stripped(title):
+                                        relevance = 0
+                                    url = Publication.url_from_id(pubno)
+                                    matches.add((url, relevance))
+                                    if self.prefs["log_level"] in "DEBUG":
+                                        log.debug(
+                                            "Add match from publications list: {0}.".format(
+                                                url
+                                            )
+                                        )
+                                    if len(matches) >= self.prefs["max_results"]:
+                                        log.info(
+                                            _(
+                                                "Search for Pubs aborted because max. results are reached: {0}."
+                                            ).format(self.prefs["max_results"])
+                                        )
+                                        break
 
                 if abort.is_set():
                     if self.prefs["log_level"] in ("DEBUG", "INFO"):
@@ -972,9 +1069,19 @@ class ISFDB4(Source):
             )
             # {('http://www.isfdb.org/cgi-bin/title.cgi?41896', 0), ('http://www.isfdb.org/cgi-bin/title.cgi?2946687', 0)}.
 
+        # Workers return clean, unsuffixed metadata to this invocation-private
+        # queue. After they finish, collisions are qualified and forwarded to Calibre.
+        worker_result_queue = Queue()
         workers = [
             Worker(
-                m_url, result_queue, self.browser, log, m_rel, self, self.prefs, timeout
+                m_url,
+                worker_result_queue,
+                self.browser,
+                log,
+                m_rel,
+                self,
+                self.prefs,
+                timeout,
             )
             for (m_url, m_rel) in matches
         ]
@@ -1004,6 +1111,17 @@ class ISFDB4(Source):
 
         if self.prefs["log_level"] in "DEBUG":
             log.debug("*** All workers ended. timeout={0}".format(timeout))
+
+        completed_results = []
+        while True:
+            try:
+                completed_results.append(worker_result_queue.get_nowait())
+            except Empty:
+                break
+
+        self._qualify_colliding_results(completed_results, log)
+        for mi, source_url in completed_results:
+            result_queue.put(mi)
 
     def download_cover(
         self,
@@ -1283,14 +1401,6 @@ class Worker(Thread):
             # Initialize the book queue
             mi = Metadata(pub["title"], pub["authors"])
 
-            # Avoid Calibre's default title and/or author(s) merge behavior by distinguish titles
-            if pub.get("isfdb-title"):
-                mi.title = mi.title + " (title #" + str(pub.get("isfdb-title")) + ")"
-                if self.prefs["log_level"] in "DEBUG":
-                    self.log.debug(
-                        "Adding book title id to avoid merging: {0}".format(mi.title)
-                    )
-
             # Set isfdb4 identifiers
             if pub.get("isfdb"):
                 mi.set_identifier("isfdb", pub["isfdb"])
@@ -1359,58 +1469,6 @@ class Worker(Thread):
 
             mi.source_relevance = self.relevance
 
-            # pub search gives:
-            # Add match: http://www.isfdb.org/cgi-bin/pl.cgi?742977.
-            # Add match: http://www.isfdb.org/cgi-bin/pl.cgi?503917.
-            # Add match: http://www.isfdb.org/cgi-bin/pl.cgi?443592.
-            # Add match: http://www.isfdb.org/cgi-bin/pl.cgi?492635.
-            # Add match: http://www.isfdb.org/cgi-bin/pl.cgi?493580.
-            # Add match: http://www.isfdb.org/cgi-bin/pl.cgi?636903.
-            # title search gives:
-            # Add match: http://www.isfdb.org/cgi-bin/title.cgi?2639044.
-            # Add match: http://www.isfdb.org/cgi-bin/title.cgi?1477793.
-            # Add match: http://www.isfdb.org/cgi-bin/title.cgi?2048538.
-
-            # With Calibre's default behavior (merge all sources with identical titles and author(s)),
-            # the following titles where displayed in calibre GUI
-            # stub={'title': 'Vorwort (Zur besonderen Verwendung)', 'authors': ['K. H. Scheer'], 'url': 'http://www.isfdb.org/cgi-bin/title.cgi?2639044'}
-            # stub={'title': 'Zur besonderen Verwendung', 'authors': ['K. H. Scheer'], 'url': 'http://www.isfdb.org/cgi-bin/title.cgi?1477793'}
-            # stub={'title': 'Zur besonderen Verwendung (excerpt)', 'authors': ['K. H. Scheer'], 'url': 'http://www.isfdb.org/cgi-bin/title.cgi?2048538'}
-            # (To be honest, only stub #2 contains really a book title. Vorwort (preface) and excerpt are not what we want)
-            # And all(!) pubs are crumbled in one!
-
-            # So, if we want not to merge metadata results on title and/or author(s) as coded alin Calibre's merge_metadata_results()
-
-            # (See https://github.com/kovidgoyal/calibre/blob/master/src/calibre/ebooks/metadata/sources/identify.py and
-            # as stated in help text for check box "more than one entry per source":
-            # "Normally, the metadata download system will keep only a single result per metadata source.
-            # This option will cause it to keep all results returned from every metadata source. Useful if you only use
-            # one or two sources and want to select individual results from them by hand.
-            # Note that result with identical title/author/identifiers are still merged."
-            # See also:
-            # https://www.mobileread.com/forums/showthread.php?t=224546
-            # http://www.mobileread.com/forums/showthread.php?t=336308)
-
-            # we have to qualify the title field with distinguish patterns before we put the metadata in the request queue.
-
-            # Avoid Calibre's default title and/or author(s) merge behavior by distinguish titles
-            if pub.get("isfdb"):
-                # If title has already a 'title #' qualifier, remove it
-                stripped_title = re.sub(r" \(title #[0-9]*\)", "", mi.title).strip()
-                if self.prefs["log_level"] in "DEBUG":
-                    self.log.debug(
-                        "mi.title={0}, stripped_title={1}".format(
-                            mi.title, stripped_title
-                        )
-                    )
-                mi.title = stripped_title + " (pub #" + str(pub.get("isfdb")) + ")"
-                if self.prefs["log_level"] in "DEBUG":
-                    self.log.debug(
-                        "Adding book publication id to avoid merging: {0}".format(
-                            mi.title
-                        )
-                    )
-
             # TODO: do we actually want / need this?
             # TODO: do we actually want / need this?
             if not pub:
@@ -1425,8 +1483,8 @@ class Worker(Thread):
 
             # self.log.info('Finally formatted metadata={0}'.format(mi))
             # self.log.info(''.join([char * 20 for char in '#']))
-            # Put metadata in Calibre's result queue
-            self.result_queue.put(mi)
+            # Put completed metadata and its source URL in ISFDB4's private result queue.
+            self.result_queue.put((mi, self.url))
             end = time.time()
             if self.prefs["log_level"] in "DEBUG":
                 self.log.debug("Elapsed time: {0}".format(end - start))
