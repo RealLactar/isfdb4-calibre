@@ -1385,13 +1385,11 @@ class Worker(Thread):
                     self.log.error(_("Out of cheese error! Unrecognised url!"))
                 return
 
-            # if not pub.get("title") or not pub.get("authors"):
-            if not pub.get("title") and not pub.get("authors"):
+            if not pub.get("title"):
                 if self.prefs["log_level"] in ("DEBUG", "INFO", "ERROR"):
                     self.log.error(_("Insufficient metadata found for %r") % self.url)
                 return
-
-            if len(pub["authors"]) == 0:
+            if not pub.get("authors"):
                 pub["authors"] = [_("Unknown")]
 
             # Put extracted metadata in queue
