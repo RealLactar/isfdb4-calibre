@@ -2,6 +2,7 @@
 
 from asyncio import log
 import gettext
+from html import escape
 from logging import log
 import re
 import time
@@ -21,6 +22,9 @@ from calibre_plugins.isfdb4.objects import (
     PublicationsList,
     TitleList,
     TitleCovers,
+    UnsupportedQuery,
+    SearchCancelled,
+    check_cancelled,
 )
 
 # import calibre_plugins.isfdb4.myglobals
@@ -49,6 +53,30 @@ load_translations()
 def apply_isfdb_headers(browser):
     browser.addheaders = ISFDB_REQUEST_HEADERS
     return browser
+
+class RecordMatches:
+    """One canonical work/edition URL, with the best discovered relevance."""
+    def __init__(self):
+        self.records = {}
+
+    @staticmethod
+    def canonical(url):
+        match = re.fullmatch(r"https?://(?:www\.)?isfdb\.org/cgi-bin/(pl|title)\.cgi\?([0-9]+)(?:[&#].*)?", url)
+        if match:
+            return f"https://www.isfdb.org/cgi-bin/{match[1]}.cgi?{int(match[2])}"
+        return url
+
+    def add(self, item):
+        url, relevance = item
+        url = self.canonical(url)
+        self.records[url] = min(relevance, self.records.get(url, relevance))
+
+    def __len__(self):
+        return len(self.records)
+
+    def __iter__(self):
+        return iter(sorted(self.records.items(), key=lambda pair: (pair[1], pair[0])))
+
 
 class ISFDB4(Source):
     name = "ISFDB4"
@@ -564,7 +592,7 @@ class ISFDB4(Source):
                 if self.prefs["log_level"] in "DEBUG":
                     log.debug("Qualified colliding metadata title: {0}".format(mi.title))
 
-    def clean_downloaded_metadata(self, mi):
+    def clean_downloaded_metadata(self, mi, log=None):
         """
         Call this method in your plugin's identify method to normalize metadata
         before putting the Metadata object into result_queue. You can of
@@ -580,39 +608,46 @@ class ISFDB4(Source):
             mi.tags = list(map(fixcase, mi.tags))
         mi.isbn = check_isbn(mi.isbn)
 
-        # Build custom title, if template is given
-        if (
-            self.prefs["title_template"] == ""
-            or self.prefs["title_template"] == "{title}"
-        ):
-            pass  # Vanilla title string
-        else:
-            custom_title = self.prefs["title_template"]
-            custom_title = custom_title.replace("{title}", mi.title)
-            custom_title = custom_title.replace(
-                "{title_sort}", title_sort(mi.title, lang="deu")
-            )
-            custom_title = custom_title.replace("{authors}", " & ".join(mi.authors))
-            custom_title = custom_title.replace(
-                "{authors_sort}", " & ".join(map(author_to_author_sort, mi.authors))
-            )
-            custom_title = custom_title.replace("{series}", mi.series)
-            if mi.series_index is None:
-                custom_title = custom_title.replace("{series_index}", "")
-            else:
-                pattern = r"(\{series_index:.*?\})"
-                match = re.search(pattern, custom_title)
-                if match:
-                    f_string = match.group().replace("series_index", "")
-                    series_index_str = f_string.format(mi.series_index)
-                    custom_title = custom_title.replace(match.group(), series_index_str)
-                else:
-                    custom_title = custom_title.replace(
-                        "{series_index}", str(mi.series_index).strip()
-                    )
-            mi.title = custom_title
+        template = self.prefs["title_template"]
+        if template and template != "{title}":
+            original_title = mi.title
+            values = {
+                "title": mi.title or "",
+                "title_sort": title_sort(mi.title or "", lang="deu"),
+                "authors": " & ".join(mi.authors or []),
+                "authors_sort": " & ".join(map(author_to_author_sort, mi.authors or [])),
+                "series": mi.series or "",
+                "series_index": mi.series_index if mi.series else None,
+                "main_series": mi.get("main_series") or "",
+                "series_code": mi.get("series_code") or "",
+            }
+            try:
+                def render(match):
+                    name, specification = match.group(1), match.group(2)
+                    value = values[name]
+                    return "" if value is None else format(value, specification or "")
+                rendered = re.sub(r"\{([a-z_]+)(?::([^{}]*))?\}", render, template)
+                if not rendered.strip() or "{" in rendered or "}" in rendered:
+                    raise ValueError("Invalid or empty title template result")
+                mi.title = rendered
+            except (KeyError, ValueError, TypeError) as error:
+                mi.title = original_title
+                if log is not None:
+                    log.error(f"ISFDB title template could not be rendered; retaining original title: {error}")
 
     def identify(
+        self, log, result_queue, abort, title=None, authors=None, identifiers={}, timeout=30,
+    ):
+        if abort.is_set():
+            return
+        try:
+            return self._identify(log, result_queue, abort, title, authors, identifiers, timeout)
+        except SearchCancelled:
+            log.debug("ISFDB lookup cancelled.")
+        except UnsupportedQuery as error:
+            log.error("ISFDB lookup stopped without sending an incomplete search: %s", error)
+
+    def _identify(
         self,
         log,
         result_queue,
@@ -628,12 +663,16 @@ class ISFDB4(Source):
         ISBN and then for title and author.
         """
 
+        prefs = {**self.prefs.defaults, **self.prefs}
+        prefs["_abort"] = abort
+        check_cancelled(prefs)
+
         log.info(" ")
         log.info("*" * 40)
         log.info(_("ISFDB4 is starting..."))
-        log.info(_("Log level is {0}.").format(self.prefs["log_level"]))
+        log.info(_("Log level is {0}.").format(prefs["log_level"]))
 
-        if self.prefs["log_level"] in "DEBUG":
+        if prefs["log_level"] in "DEBUG":
             log.debug("*** Enter ISFDB4.identify().")
             log.debug("abort={0}".format(abort))
             log.debug("title={0}".format(title))
@@ -641,21 +680,22 @@ class ISFDB4(Source):
             log.debug("identifiers={0}".format(identifiers))
 
         # For very short or generic titles ('The Sky') one may set the marker '=' as first character in title field
-        self.prefs["exact_search"] = False
-        log.debug("Preference keys={0}".format(sorted(self.prefs.keys())))
+        prefs["exact_search"] = False
+        log.debug("Preference keys={0}".format(sorted(prefs.keys())))
         if title:
             if title[0] == "=":
-                self.prefs["exact_search"] = True
+                prefs["exact_search"] = True
                 title = title[1:]
                 log.debug("title={0}".format(title))
                 log.debug("Exact title search enabled.")
 
-        matches = set()  # A tuple of (page url, relevance)
+        matches = RecordMatches()  # A tuple of (page url, relevance)
+        author_provenance = {}
 
         # If we have an ISFDB pub ID, or a title ID, we use it to construct the publication URL directly
 
         book_url_tuple = self.get_book_url(identifiers)
-        if self.prefs["log_level"] in "DEBUG":
+        if prefs["log_level"] in "DEBUG":
             log.debug("book_url_tuple={0}".format(book_url_tuple))
 
         if book_url_tuple:
@@ -669,7 +709,7 @@ class ISFDB4(Source):
             )
             if url is not None:
                 matches.add((url, 0))  # most relevant
-                if self.prefs["log_level"] in "DEBUG":
+                if prefs["log_level"] in "DEBUG":
                     log.debug(
                         "Add match: id_type={0}, id_val={1}, url={2}.".format(
                             id_type, id_val, url
@@ -681,14 +721,14 @@ class ISFDB4(Source):
             # If we have a publication id ('isfdb) and a title id (isfdb-title), cache the title id
             isfdb_id = identifiers.get("isfdb", None)
             title_id = identifiers.get("isfdb-title", None)
-            if self.prefs["log_level"] in "DEBUG":
+            if prefs["log_level"] in "DEBUG":
                 log.debug("isfdb_id={0}, title_id={1}.".format(isfdb_id, title_id))
             if isfdb_id and title_id:
                 self.cache_publication_id_to_title_id(isfdb_id, title_id)
         else:
 
             if abort.is_set():
-                if self.prefs["log_level"] in ("DEBUG", "INFO"):
+                if prefs["log_level"] in ("DEBUG", "INFO"):
                     log.info(_("Abort is set."))
                 return
 
@@ -713,26 +753,26 @@ class ISFDB4(Source):
             if isbn or catalog_id:
                 # Fetching publications
                 query = PublicationsList.url_from_isbn(
-                    isbn or catalog_id, log, self.prefs
+                    isbn or catalog_id, log, prefs
                 )
                 stubs = PublicationsList.from_url(
-                    self.browser, query, timeout, log, self.prefs
+                    self.browser, query, timeout, log, prefs
                 )
 
                 for stub in stubs:
                     if stub["url"] is not None:
                         matches.add((stub["url"], 1))
-                        if self.prefs["log_level"] in "DEBUG":
+                        if prefs["log_level"] in "DEBUG":
                             log.debug("Add match: {0}.".format(stub["url"]))
-                        if len(matches) >= self.prefs["max_results"]:
+                        if len(matches) >= prefs["max_results"]:
                             log.info(
                                 _(
                                     "Search for Pubs aborted because max. results are reached: {0}."
-                                ).format(self.prefs["max_results"])
+                                ).format(prefs["max_results"])
                             )
                             break
 
-                if self.prefs["log_level"] in ("DEBUG", "INFO"):
+                if prefs["log_level"] in ("DEBUG", "INFO"):
                     log.info(
                         _("{0} matches with isbn and/or isfdb-catalog ids.").format(
                             len(matches)
@@ -740,7 +780,7 @@ class ISFDB4(Source):
                     )
 
             if abort.is_set():
-                if self.prefs["log_level"] in ("DEBUG", "INFO"):
+                if prefs["log_level"] in ("DEBUG", "INFO"):
                     log.info(_("Abort is set."))
                 return
 
@@ -748,9 +788,10 @@ class ISFDB4(Source):
             # Search with title and author(s)      #
             ########################################
 
-            if self.prefs["log_level"] in ("DEBUG", "INFO"):
+            if prefs["log_level"] in ("DEBUG", "INFO"):
                 log.info(_("No id(s) given. Trying a search with title and author(s)."))
 
+            title = title or ""
             # Keyword search for magazines?
             # Title:The Magazine of Fantasy and Science Fiction Year:1955 Month:03 Week: Vol:8 No:3
             possible_keywords = ["Title:", "Year:", "Month:", "Week:", "Vol:", "No:"]
@@ -761,18 +802,18 @@ class ISFDB4(Source):
             if any(found_keywords):
                 # Special search for magazines
                 query = TitleList.url_from_title_with_keywords(
-                    title, found_keywords, log, self.prefs
+                    title, found_keywords, log, prefs
                 )
                 stubs = TitleList.from_url(
-                    self.browser, query, timeout, log, self.prefs
+                    self.browser, query, timeout, log, prefs
                 )
-                if self.prefs["log_level"] in "DEBUG":
+                if prefs["log_level"] in "DEBUG":
                     log.debug(
                         "{0} stubs found with TitleList.from_url().".format(len(stubs))
                     )
                 # Sort stubs in ascending order by title date
                 sorted_stubs = sorted(stubs, key=lambda k: k["date"])
-                if self.prefs["log_level"] in "DEBUG":
+                if prefs["log_level"] in "DEBUG":
                     log.debug(
                         "sorted_stubs from TitleList.from_url(): {0}.".format(
                             sorted_stubs
@@ -783,38 +824,38 @@ class ISFDB4(Source):
                     # if stripped(stub["title"]) == stripped(title):  # ???
                     if stub["title"].strip() == title.strip():
                         relevance = 0
-                    if self.prefs["log_level"] in "DEBUG":
+                    if prefs["log_level"] in "DEBUG":
                         log.debug('stub["url"]={0}.'.format(stub["url"]))
                     if stub["url"] is not None:
                         matches.add((stub["url"], relevance))
-                        if self.prefs["log_level"] in "DEBUG":
+                        if prefs["log_level"] in "DEBUG":
                             log.debug(
                                 "Add match from title list: {0}.".format(stub["url"])
                             )
-                        if len(matches) >= self.prefs["max_results"]:
+                        if len(matches) >= prefs["max_results"]:
                             log.info(
                                 _(
                                     "Search for Titles aborted because max. results are reached: {0}."
-                                ).format(self.prefs["max_results"])
+                                ).format(prefs["max_results"])
                             )
                             break
                         # Linked publication expansion honors the same preference as
                         # the separate publication search.
-                        if self.prefs["search_publications"]:
+                        if prefs["search_publications"]:
                             ######################################################################
                             # Fetch all linked pub records for this title,                       #
                             # even if the book title is not identical with the publication title #
                             ######################################################################
                             stub_with_pubs = Title.from_url(
-                                self.browser, stub["url"], timeout, log, self.prefs
+                                self.browser, stub["url"], timeout, log, prefs
                             )
-                            if self.prefs["log_level"] in "DEBUG":
+                            if prefs["log_level"] in "DEBUG":
                                 log.debug(
                                     "stub_with_pubs after Title.from_url()={0}".format(
                                         stub_with_pubs
                                     )
                                 )
-                            if self.prefs["log_level"] in ("DEBUG", "INFO"):
+                            if prefs["log_level"] in ("DEBUG", "INFO"):
                                 log.info(_("Fetching all linked pub records..."))
                             for pubno in stub_with_pubs["publications"]:
                                 # We have a publication id and a title id, so cache the title id
@@ -829,17 +870,17 @@ class ISFDB4(Source):
                                     relevance = 0
                                 url = Publication.url_from_id(pubno)
                                 matches.add((url, relevance))
-                                if self.prefs["log_level"] in "DEBUG":
+                                if prefs["log_level"] in "DEBUG":
                                     log.debug(
                                         "Add match from publications list: {0}.".format(
                                             url
                                         )
                                     )
-                                if len(matches) >= self.prefs["max_results"]:
+                                if len(matches) >= prefs["max_results"]:
                                     log.info(
                                         _(
                                             "Search for Pubs aborted because max. results are reached: {0}."
-                                        ).format(self.prefs["max_results"])
+                                        ).format(prefs["max_results"])
                                     )
                                     break
 
@@ -851,6 +892,9 @@ class ISFDB4(Source):
                 authors = authors or []
                 author_tokens = self.get_author_tokens(authors, only_first_author=True)
                 author = " ".join(author_tokens)
+                author_id = identifiers.get("isfdb-author") if not title else None
+                if not title and not author and author_id is None and not matches:
+                    return
                 # get_title_tokens() returns an iterator, not list!
                 # (see https://manual.calibre-ebook.com/de/_modules/calibre/ebooks/metadata/sources/base.html)
                 title_iterator = self.get_title_tokens(
@@ -860,7 +904,7 @@ class ISFDB4(Source):
                 for token in title_iterator:
                     title_tokens.append(token)
                 # These tokens are not used yet! (Perhaps with an option in config.)
-                if self.prefs["log_level"] in ("DEBUG", "INFO"):
+                if prefs["log_level"] in ("DEBUG", "INFO"):
                     log.info("title_tokens={0}.".format(title_tokens))
                     log.info(
                         _("Searching with author={0}, title={1}.").format(author, title)
@@ -872,19 +916,25 @@ class ISFDB4(Source):
 
                 # If we still haven't found enough results, also search *titles* by title and author
                 if (
-                    len(matches) < self.prefs["max_results"]
-                    and self.prefs["search_titles"]
+                    len(matches) < prefs["max_results"]
+                    and (title or author or author_id is not None)
+                    and (prefs["search_titles"] or (not title and prefs["search_publications"]))
                 ):
                     # title=In The Vault, author=H. P. Lovecraft
                     # Fetch a title list
-                    query = TitleList.url_from_title_and_author(
-                        title, author, log, self.prefs
-                    )
-                    # The title list contains a language col
-                    stubs = TitleList.from_url(
-                        self.browser, query, timeout, log, self.prefs
-                    )
-                    if self.prefs["log_level"] in "DEBUG":
+                    if title:
+                        query = TitleList.url_from_title_and_author(
+                            title, author, log, prefs
+                        )
+                        # The title list contains a language col
+                        stubs = TitleList.from_url(
+                            self.browser, query, timeout, log, prefs
+                        )
+                    else:
+                        stubs = TitleList.from_author(
+                            self.browser, author, timeout, log, prefs, author_id=author_id
+                        )
+                    if prefs["log_level"] in "DEBUG":
                         log.debug(
                             "{0} stubs found with TitleList.from_url().".format(
                                 len(stubs)
@@ -893,7 +943,7 @@ class ISFDB4(Source):
 
                     # Sort stubs in ascending order by title date
                     sorted_stubs = sorted(stubs, key=lambda k: k["date"])
-                    if self.prefs["log_level"] in "DEBUG":
+                    if prefs["log_level"] in "DEBUG":
                         log.debug(
                             "sorted_stubs from TitleList.from_url(): {0}.".format(
                                 sorted_stubs
@@ -903,6 +953,8 @@ class ISFDB4(Source):
                         # {'title': 'In the Vault', 'url': 'http://www.isfdb.org/cgi-bin/title.cgi?2946687', 'authors': ['H. P. Lovecraft']}]
 
                     for stub in sorted_stubs:
+                        if not title and len(matches) >= prefs["max_results"]:
+                            break
                         # log.info('stub={0}'.format(stub))
                         # If the title found in isfdb's title record is identical to the metadata title,
                         # promote this title record
@@ -910,39 +962,42 @@ class ISFDB4(Source):
                         if stripped(stub["title"]) == stripped(title):
                             relevance = 0
 
-                        if self.prefs["log_level"] in "DEBUG":
+                        if prefs["log_level"] in "DEBUG":
                             log.debug('stub["url"]={0}.'.format(stub["url"]))
                         # Workaround for:
                         # titlelist.from_url 'http://www.isfdb.org/cgi-bin/adv_search_results.cgi?ORDERBY=title_title&START=0&TYPE=Title&USE_1=title_title&OPERATOR_1=contains&TERM_1=Der+Sternenj%E4ger&USE_2=author_canonical&OPERATOR_2=contains&TERM_2=Kurt+Brand&CONJUNCTION_1=AND'. Found 2 titles.
                         # matches={('http://www.isfdb.org/cgi-bin/title.cgi?1816860', 0), ('http://www.isfdb.org/cgi-bin/title.cgi?1816862', 0), (None, 0)}
                         if stub["url"] is not None:
-                            matches.add((stub["url"], relevance))
-                            if self.prefs["log_level"] in "DEBUG":
+                            if not title:
+                                author_provenance[stub["url"]] = stub
+                            if title or prefs["search_titles"]:
+                                matches.add((stub["url"], relevance))
+                            if prefs["log_level"] in "DEBUG":
                                 log.debug(
                                     "Add match from title list: {0}.".format(
                                         stub["url"]
                                     )
                                 )
-                            if len(matches) >= self.prefs["max_results"]:
+                            if len(matches) >= prefs["max_results"]:
                                 log.info(
                                     _(
                                         "Search for Titles aborted because max. results are reached: {0}."
-                                    ).format(self.prefs["max_results"])
+                                    ).format(prefs["max_results"])
                                 )
                                 break
 
                             # Linked publication expansion honors the same preference as
                             # the separate publication search.
-                            if self.prefs["search_publications"]:
+                            if prefs["search_publications"]:
                                 ######################################################################
                                 # Fetch all linked pub records for this title,                       #
                                 # even if the book title is not identical with the publication title #
                                 ######################################################################
 
                                 stub_with_pubs = Title.from_url(
-                                    self.browser, stub["url"], timeout, log, self.prefs
+                                    self.browser, stub["url"], timeout, log, prefs
                                 )
-                                if self.prefs["log_level"] in "DEBUG":
+                                if prefs["log_level"] in "DEBUG":
                                     log.debug(
                                         "stub_with_pubs after Title.from_url()={0}".format(
                                             stub_with_pubs
@@ -960,7 +1015,7 @@ class ISFDB4(Source):
                                 # 'comments': '<br />Quelle: http://www.isfdb.org/cgi-bin/title.cgi?41896',
                                 # 'publications': ['706981', '61879', '273106', '618032', '44960', '359388', '618034', '297445', '297440', '367691', '302799', '309509', '18059', '11658', '38934', '145971', '282647', '248690', '306035', '237633', '120561', '282648', '591894', '237637', '564083', '609374', '282649', '309179', '264815', '682730', '423983', '396460', '824200', '416243', '359195', '38935', '789800', '391376', '35792', '282521', '282721', '282522', '308779', '601355', '170301', '185181', '35793', '359410', '282722', '303253', '78446', '65445', '277217', '64078', '567162', '791582', '555987', '379243', '325738', '287198', '249955', '446578', '293057', '356003', '332409', '374550', '469219', '570586', '463546', '531112', '529150', '593595', '774732', '579248', '623804', '623778', '648278', '776874', '776870', '666333', '765111', '779323', '745178', '805986', '806173', '239285', '288973', '352022', '431714', '506197', '511485', '514714', '560685', '855800', '706744', '708866']}
                                 # Fetching all linked pub records
-                                if self.prefs["log_level"] in ("DEBUG", "INFO"):
+                                if prefs["log_level"] in ("DEBUG", "INFO"):
                                     log.info(_("Fetching all linked pub records..."))
                                 for pubno in stub_with_pubs["publications"]:
                                     # We have a publication id and a title id, so cache the title id
@@ -973,23 +1028,27 @@ class ISFDB4(Source):
                                     if stripped(stub["title"]) == stripped(title):
                                         relevance = 0
                                     url = Publication.url_from_id(pubno)
+                                    if not title:
+                                        provenance = author_provenance.setdefault(url, {"author_sources": {}, "author_ambiguity": {}})
+                                        provenance["author_sources"].update(stub.get("author_sources", {}))
+                                        provenance["author_ambiguity"].update(stub.get("author_ambiguity", {}))
                                     matches.add((url, relevance))
-                                    if self.prefs["log_level"] in "DEBUG":
+                                    if prefs["log_level"] in "DEBUG":
                                         log.debug(
                                             "Add match from publications list: {0}.".format(
                                                 url
                                             )
                                         )
-                                    if len(matches) >= self.prefs["max_results"]:
+                                    if len(matches) >= prefs["max_results"]:
                                         log.info(
                                             _(
                                                 "Search for Pubs aborted because max. results are reached: {0}."
-                                            ).format(self.prefs["max_results"])
+                                            ).format(prefs["max_results"])
                                         )
                                         break
 
                 if abort.is_set():
-                    if self.prefs["log_level"] in ("DEBUG", "INFO"):
+                    if prefs["log_level"] in ("DEBUG", "INFO"):
                         log.info(_("Abort is set."))
                     return
 
@@ -1000,21 +1059,22 @@ class ISFDB4(Source):
                 # Why this? (bertholdm)
                 # If we haven't reached the maximum number of results, also search by title and author
                 if (
-                    len(matches) < self.prefs["max_results"]
-                    and self.prefs["search_publications"]
+                    len(matches) < prefs["max_results"]
+                    and prefs["search_publications"]
+                    and title
                 ):
 
                     query = PublicationsList.url_from_title_and_author(
-                        title, author, log, self.prefs
+                        title, author, log, prefs
                     )
                     stubs = PublicationsList.from_url(
-                        self.browser, query, timeout, log, self.prefs
+                        self.browser, query, timeout, log, prefs
                     )
                     # For the title "In the Vault" by "H. P. Lovecraft" no publications are found by title.
                     # Although the story shows up in 95 publications, but these have other titles
                     # (magazine title, anthology title, ...)
                     if stubs is None:
-                        if self.prefs["log_level"] in ("DEBUG", "INFO"):
+                        if prefs["log_level"] in ("DEBUG", "INFO"):
                             log.info(
                                 _(
                                     "No publications found with title and author(s) search for »{0}« by {1}."
@@ -1023,7 +1083,7 @@ class ISFDB4(Source):
 
                     # Sort stubs in ascending order by pub year
                     sorted_stubs = sorted(stubs, key=lambda k: k["pub_year"])
-                    if self.prefs["log_level"] in "DEBUG":
+                    if prefs["log_level"] in "DEBUG":
                         log.debug(
                             "sorted_stubs from PublicationsList.from_url(): {0}.".format(
                                 sorted_stubs
@@ -1037,18 +1097,18 @@ class ISFDB4(Source):
                             relevance = 0  # this is the exact title
                         if stub["url"] is not None:
                             matches.add((stub["url"], relevance))
-                            if self.prefs["log_level"] in "DEBUG":
+                            if prefs["log_level"] in "DEBUG":
                                 log.debug("Add match: {0}.".format(stub["url"]))
-                            if len(matches) >= self.prefs["max_results"]:
+                            if len(matches) >= prefs["max_results"]:
                                 log.info(
                                     _(
                                         "Search for Titles aborted because max. results are reached: {0}."
-                                    ).format(self.prefs["max_results"])
+                                    ).format(prefs["max_results"])
                                 )
                                 break
 
                 if abort.is_set():
-                    if self.prefs["log_level"] in ("DEBUG", "INFO"):
+                    if prefs["log_level"] in ("DEBUG", "INFO"):
                         log.info(_("Abort is set."))
                     return
 
@@ -1061,7 +1121,7 @@ class ISFDB4(Source):
 
         # Transfer the search results to the workers
 
-        if self.prefs["log_level"] in ("DEBUG", "INFO"):
+        if prefs["log_level"] in ("DEBUG", "INFO"):
             log.info(
                 _("{0} Matches found (URL, relevance): {1}.").format(
                     len(matches), matches
@@ -1072,31 +1132,34 @@ class ISFDB4(Source):
         # Workers return clean, unsuffixed metadata to this invocation-private
         # queue. After they finish, collisions are qualified and forwarded to Calibre.
         worker_result_queue = Queue()
-        workers = [
-            Worker(
+        workers = []
+        for m_url, m_rel in matches:
+            if abort.is_set():
+                break
+            workers.append(Worker(
                 m_url,
                 worker_result_queue,
                 self.browser,
                 log,
                 m_rel,
                 self,
-                self.prefs,
+                prefs,
                 timeout,
-            )
-            for (m_url, m_rel) in matches
-        ]
+            ))
 
-        if self.prefs["log_level"] in "DEBUG":
+        if prefs["log_level"] in "DEBUG":
             log.debug("{0} workers created.".format(len(workers)))
 
-        if self.prefs["log_level"] in ("DEBUG", "INFO"):
+        if prefs["log_level"] in ("DEBUG", "INFO"):
             log.info(_("Starting workers, if found..."))
         for w in workers:
+            if abort.is_set():
+                break
             w.start()
-            if self.prefs["log_level"] in "DEBUG":
+            if prefs["log_level"] in "DEBUG":
                 log.debug("Worker started: {0}.".format(w))
             # Don't send all requests at the same time
-            time.sleep(0.1)
+            abort.wait(0.1)
 
         while not abort.is_set():
             a_worker_is_alive = False
@@ -1109,9 +1172,11 @@ class ISFDB4(Source):
             if not a_worker_is_alive:
                 break
 
-        if self.prefs["log_level"] in "DEBUG":
-            log.debug("*** All workers ended. timeout={0}".format(timeout))
+        if prefs["log_level"] in "DEBUG":
+            log.debug("ISFDB worker wait finished; active workers={0}".format(sum(w.is_alive() for w in workers)))
 
+        if abort.is_set():
+            return
         completed_results = []
         while True:
             try:
@@ -1119,11 +1184,32 @@ class ISFDB4(Source):
             except Empty:
                 break
 
+        completed_results.sort(key=lambda item: (item[0].source_relevance, item[1]))
         self._qualify_colliding_results(completed_results, log)
         for mi, source_url in completed_results:
+            if abort.is_set():
+                return
+            provenance = author_provenance.get(source_url, {})
+            ambiguity = provenance.get("author_ambiguity")
+            if ambiguity:
+                sources = provenance.get("author_sources", {})
+                links = [f'<a href="{escape(url, quote=True)}">{escape(name or "Author")} (ISFDB author #{url.rsplit("?", 1)[-1]})</a>'
+                         for url, name in sources.items()]
+                candidates = ", ".join(url.rsplit("?", 1)[-1] for url in ambiguity)
+                mi.comments = (mi.comments or "") + "<p>Ambiguous author search; candidate ISFDB author IDs: " + escape(candidates) + ". Source bibliography: " + "; ".join(links) + ".</p>"
             result_queue.put(mi)
 
-    def download_cover(
+    def download_cover(self, log, result_queue, abort, title=None, authors=None,
+                       identifiers={}, timeout=30, get_best_cover=False):
+        if abort.is_set():
+            return
+        try:
+            return self._download_cover(log, result_queue, abort, title, authors,
+                                        identifiers, timeout, get_best_cover)
+        except SearchCancelled:
+            log.debug("ISFDB cover lookup cancelled.")
+
+    def _download_cover(
         self,
         log,
         result_queue,
@@ -1134,17 +1220,19 @@ class ISFDB4(Source):
         timeout=30,
         get_best_cover=False,
     ):
+        prefs = {**self.prefs.defaults, **self.prefs}
+        prefs["_abort"] = abort
         urls = []
 
         cached_url = self.get_cached_cover_url(identifiers)
         title_id = identifiers.get("isfdb-title")
 
-        if self.prefs["log_level"] in "DEBUG":
+        if prefs["log_level"] in "DEBUG":
             log.debug("*** Enter download_cover().")
             log.debug("cached_url={0}, title_id={1}.".format(cached_url, title_id))
 
         if not cached_url and not title_id:
-            if self.prefs["log_level"] in ("DEBUG", "INFO"):
+            if prefs["log_level"] in ("DEBUG", "INFO"):
                 log.info(_("Not enough information. Running identify."))
             rq = Queue()
             self.identify(log, rq, abort, title, authors, identifiers, timeout)
@@ -1176,33 +1264,47 @@ class ISFDB4(Source):
                         break
 
         if cached_url:
-            if self.prefs["log_level"] in "DEBUG":
+            if prefs["log_level"] in "DEBUG":
                 log.debug("Using cached cover URL.")
             urls.append(cached_url)
 
         elif title_id:
-            if self.prefs["log_level"] in "DEBUG":
+            if prefs["log_level"] in "DEBUG":
                 log.debug("Finding all title covers.")
             title_covers_url = TitleCovers.url_from_id(title_id)
             urls.extend(
                 TitleCovers.from_url(
-                    self.browser, title_covers_url, timeout, log, self.prefs
+                    self.browser, title_covers_url, timeout, log, prefs
                 )
             )
 
         else:
             # Everything is spiders
-            if self.prefs["log_level"] in ("DEBUG", "INFO", "ERROR"):
+            if prefs["log_level"] in ("DEBUG", "INFO", "ERROR"):
                 log.error(_("We were unable to find any covers."))
 
         if abort.is_set():
             return
 
-        if self.prefs["log_level"] in "DEBUG":
+        if prefs["log_level"] in "DEBUG":
             log.debug("Going to download covers from {0}.".format(urls))
 
+        urls = list(dict.fromkeys(url for url in urls if isinstance(url, str) and url.strip()))
+        urls = urls[:max(0, int(prefs["max_covers"]))]
+        if not urls or abort.is_set():
+            return
+        class CoverResults:
+            # Calibre's raw-byte downloader can complete after cancellation.
+            # Keep that completion off the invocation's public result queue.
+            def put(receiver, item, *args, **kwargs):
+                if not abort.is_set():
+                    result_queue.put(item, *args, **kwargs)
+
+            def put_nowait(receiver, item):
+                receiver.put(item, block=False)
+
         self.download_multiple_covers(
-            title, authors, urls, get_best_cover, timeout, result_queue, abort, log
+            title, authors, urls, get_best_cover, timeout, CoverResults(), abort, log
         )
 
 
@@ -1223,7 +1325,7 @@ class Worker(Thread):
         self.relevance = relevance
         self.plugin = plugin
         self.browser = browser.clone_browser()
-        self.prefs = prefs
+        self.prefs = dict(prefs)
 
     def run(self):
 
@@ -1242,6 +1344,7 @@ class Worker(Thread):
         # Publication: Best S.F. Stories from New Worlds 7
 
         try:
+            check_cancelled(self.prefs)
             if self.prefs["log_level"] in ("DEBUG", "INFO"):
                 self.log.info(_("Worker parsing ISFDB url: %r") % self.url)
 
@@ -1327,10 +1430,38 @@ class Worker(Thread):
                         # Publication: Best S.F. Stories from New Worlds / Publication Record # 35921
                         # Publication: The Best SF Stories from New Worlds / Publication Record # 275065
 
-                        if "series" in tit:
-                            if "series" not in pub:
-                                pub["series"] = tit["series"]
+                        # Publication credits describe a container, not every contained work.
+                        # Only equal bibliographic titles with compatible types supply
+                        # missing same-work credits/series. Stable IDs still govern aliases.
+                        same_work = (
+                            " ".join(pub.get("title", "").split()).casefold()
+                            == " ".join(tit.get("title", "").split()).casefold()
+                            and (not pub.get("type") or not tit.get("type") or pub["type"] == tit["type"])
+                        )
+                        series_source = pub if pub.get("series") else tit if same_work and tit.get("series") else {}
+                        series_name = series_source.get("series") or ""
+                        series_index = series_source.get("series_index") if series_name else None
+                        pub["series"] = series_name
+                        pub["series_index"] = series_index
 
+                        # Keep publication credit order, retaining additional
+                        # credited title authors instead of overwriting them.
+                        authors = list(pub.get("authors") or [])
+                        credits = list(pub.get("author_credits") or [(name, pub.get("author_ids", {}).get(name)) for name in authors])
+                        credited_ids = {author_id for name, author_id in credits if author_id}
+                        title_credits = tit.get("author_credits") or [(name, tit.get("author_ids", {}).get(name)) for name in tit.get("authors") or []]
+                        for author, author_id in title_credits if same_work else []:
+                            # Stable IDs distinguish homonyms and identify aliases.
+                            # With missing IDs, retain the previous name fallback.
+                            known_name = any(name == author and (not author_id or not existing_id) for name, existing_id in credits)
+                            if not known_name and (not author_id or author_id not in credited_ids):
+                                authors.append(author)
+                                credits.append((author, author_id))
+                                if author_id:
+                                    credited_ids.add(author_id)
+                        if authors:
+                            pub["authors"] = authors
+                            pub["author_credits"] = credits
                         tit.update(pub)
                         pub = tit
                         if self.prefs["log_level"] in "DEBUG":
@@ -1385,12 +1516,17 @@ class Worker(Thread):
                     self.log.error(_("Out of cheese error! Unrecognised url!"))
                 return
 
+            check_cancelled(self.prefs)
             if not pub.get("title"):
                 if self.prefs["log_level"] in ("DEBUG", "INFO", "ERROR"):
                     self.log.error(_("Insufficient metadata found for %r") % self.url)
                 return
             if not pub.get("authors"):
                 pub["authors"] = [_("Unknown")]
+
+            if "tags" not in pub:
+                self.log.debug("ISFDB record has no optional tags; retaining bibliographic metadata.")
+                pub["tags"] = []
 
             # Put extracted metadata in queue
             if self.prefs["log_level"] in "DEBUG":
@@ -1458,6 +1594,7 @@ class Worker(Thread):
                         )
                     setattr(mi, attr, pub[attr])
 
+            check_cancelled(self.prefs)
             # TODO: we need a test which has a title but no cover
             if pub.get("cover_url"):
                 self.plugin.cache_identifier_to_cover_url(
@@ -1471,22 +1608,26 @@ class Worker(Thread):
             # TODO: do we actually want / need this?
             if not pub:
                 self.log.debug("No publication info found for title; continuing with title-only metadata.")
-            elif pub.get("isfdb") and pub.get("isbn"):
-                self.plugin.cache_isbn_to_identifier(pub["isbn"], pub["isfdb"])
-            # if pub and pub.get("isfdb") and pub.get("isbn"):
-            # if pub.get("isfdb") and pub.get("isbn"):
-                self.plugin.cache_isbn_to_identifier(pub["isbn"], pub["isfdb"])
+            elif pub.get("isfdb"):
+                identifiers = pub.get("identifiers", {})
+                for key in ("isbn", "isbn-10", "isbn-13"):
+                    isbn = check_isbn(identifiers.get(key) or pub.get(key))
+                    if isbn:
+                        self.plugin.cache_isbn_to_identifier(isbn, pub["isfdb"])
 
-            self.plugin.clean_downloaded_metadata(mi)
+            self.plugin.clean_downloaded_metadata(mi, self.log)
 
             # self.log.info('Finally formatted metadata={0}'.format(mi))
             # self.log.info(''.join([char * 20 for char in '#']))
             # Put completed metadata and its source URL in ISFDB4's private result queue.
+            check_cancelled(self.prefs)
             self.result_queue.put((mi, self.url))
             end = time.time()
             if self.prefs["log_level"] in "DEBUG":
                 self.log.debug("Elapsed time: {0}".format(end - start))
 
+        except SearchCancelled:
+            self.log.debug("ISFDB worker cancelled.")
         except Exception as e:
             if self.prefs["log_level"] in ("DEBUG", "INFO", "ERROR", "EXCEPTION"):
                 self.log.exception(

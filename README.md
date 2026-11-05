@@ -1,3 +1,32 @@
+Unreleased development changes — 2026-11-04:
+
+- Phase 9B (2026-11-05): deduplicate canonical metadata records across search
+  strategies, isolate request preferences, honor cooperative cancellation,
+  suppress late cover results, and repair ISBN cover caching and focused
+  Notes/ASIN/tag parsing. See [Phase 9B notes](docs/PHASE9B.md) for limits.
+
+- Phase 9A (2026-11-05): protect container publication credits, merge series
+  names and indices as a pair, retain decimal indices, tolerate missing
+  optional fields, and safely fall back when custom title formatting fails.
+  Calibre metadata-source ratings intentionally remain on the 0–5 scale.
+  See [Phase 9A development notes](docs/PHASE9A.md).
+
+- Phase 7: query rejection now identifies unsupported characters and parameters;
+  Latin-1 encoding and NFC normalization remain unchanged. Exact author spellings
+  take priority over punctuation variants, without casefold expansions merging
+  distinct names. Publication/title merging retains ordered author IDs so
+  homonymous coauthors are preserved. These are local ISFDB4 corrections, not
+  adoption of ISFDB3 1.5.0 browser functionality.
+
+- Added HTTP/network open and read diagnostics while preserving original
+  exceptions, tracebacks, headers, TLS and timeout behavior. Diagnostic intent
+  adapted from ISFDB3 by bertholdm (Michael Detambel), commit
+  [b8ff4a0](https://github.com/bertholdm/isfdb3-calibre/commit/b8ff4a0fd4175b64843334bb787b62f8151e1146),
+  with earlier Calibre diagnostic patterns by Kovid Goyal, commit
+  [e004b057](https://github.com/kovidgoyal/calibre/commit/e004b057ed8b5491770c35dd1ad7c39cdd2191e0).
+  No upstream exception classes were copied. Existing GPLv3 notices remain
+  applicable; see [upstream provenance](docs/UPSTREAM_PROVENANCE.md).
+
 [Metadata Source Plugin] ISFDB4 - Version Version 1.4.14 05-18-2026
 
 - Replaced mechanize page fetches with urllib requests to avoid ISFDB 403 responses under newer Calibre/Python environments.
