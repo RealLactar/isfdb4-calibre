@@ -64,8 +64,9 @@ from http_diagnostics import HttpDiagnostics
 from unicode_correctness import UnicodeCorrectness
 from metadata_correctness import MetadataCorrectness
 from reliability import Reliability
+from ranking import Ranking
 
-class Regression(Reliability, MetadataCorrectness, UnicodeCorrectness, HttpDiagnostics, Phase4Cases, AuthorEdges, unittest.TestCase):
+class Regression(Ranking, Reliability, MetadataCorrectness, UnicodeCorrectness, HttpDiagnostics, Phase4Cases, AuthorEdges, unittest.TestCase):
     def setUp(self):
         # Fresh defaults for each case, without sharing persisted test preferences.
         pref_file = Path(config_dir) / 'metadata_sources' / 'ISFDB4.json'

@@ -1,6 +1,6 @@
 # Isolated Calibre 9.17 regression baseline
 
-Current Phase 9B result: **145 tests: 144 passed, 0 failed/errors, 0 skipped,
+Current Phase 9F result: **154 tests: 153 passed, 0 failed/errors, 0 skipped,
 1 expected failure**. Earlier phase results below are historical evidence.
 
 From the repository root in PowerShell:
@@ -542,3 +542,26 @@ assertions: exact_search no longer writes the disposable preferences file, and
 advanced-search fallback no longer overwrites max_results/max_covers. This is
 an intentional approved Phase 9B behavior correction, not weakened coverage.
 No new skips/expected failures were added. All Phase 9A correctness tests pass.
+
+## Phase 9F: exact-title ranking before limits
+
+Nine tests in ranking.py cover actual public simple-search candidate discovery,
+exact novel versus earlier excerpt at max_results=1, title-only lookup, larger
+limits retaining partial works, explicitly requested excerpts, distinct numeric
+titles, publication-only ranking, no-exact date fallback, and mixed title/edition
+IDs with repeated publication links. Existing author-only tests ensure their
+date-based ordering remains unchanged. Three failures were observed before the
+production correction; all tests now pass, with no new expected failures/skips.
+
+eternity_simple_search.html contains five verbatim row fragments from a public
+ISFDB simple-search response captured 2026-11-05; it is NOT a fabricated
+advanced-search layout. Source/provenance and raw-response hashes are recorded
+in docs/PHASE9F.md. The metadata dictionaries in ranking.py are explicit offline
+test doubles, not claimed live title/publication pages. These fixtures perform
+no network access. Site HTML/data is credited to ISFDB, not original ISFDB4 work.
+
+Complete result under Calibre 9.17.0 / Python 3.14.8: 154 executed, 153 passed,
+zero failures/errors/skips and the unchanged advanced-search expected failure.
+Separate Camoufox fixture suite: 24 passed. Frozen original/checkpoint and fixed
+working-copy comparisons ran separately offline against the captured search
+responses. The installed original ZIP and preferences were not changed.

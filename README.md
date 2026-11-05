@@ -1,5 +1,9 @@
 Unreleased development changes — 2026-11-04:
 
+- Phase 9F (2026-11-05): rank exact title matches before applying result limits,
+  retaining partial works and date ordering within each relevance group. The
+  installed original plugin is unchanged. See [Phase 9F notes](docs/PHASE9F.md).
+
 - Phase 9B (2026-11-05): deduplicate canonical metadata records across search
   strategies, isolate request preferences, honor cooperative cancellation,
   suppress late cover results, and repair ISBN cover caching and focused

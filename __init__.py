@@ -6,6 +6,7 @@ from html import escape
 from logging import log
 import re
 import time
+import unicodedata
 from queue import Queue, Empty
 from threading import Thread
 
@@ -53,6 +54,13 @@ load_translations()
 def apply_isfdb_headers(browser):
     browser.addheaders = ISFDB_REQUEST_HEADERS
     return browser
+
+def title_relevance(requested, candidate):
+    """Exact spelling outranks partial matches; no work-type preference."""
+    def key(value):
+        return " ".join(unicodedata.normalize("NFC", value).lower().split())
+    return 0 if requested and key(requested) == key(candidate) else 2
+
 
 class RecordMatches:
     """One canonical work/edition URL, with the best discovered relevance."""
@@ -886,9 +894,6 @@ class ISFDB4(Source):
 
             else:
 
-                def stripped(s):
-                    return "".join(c.lower() for c in s if c.isalpha() or c.isspace())
-
                 authors = authors or []
                 author_tokens = self.get_author_tokens(authors, only_first_author=True)
                 author = " ".join(author_tokens)
@@ -941,8 +946,8 @@ class ISFDB4(Source):
                             )
                         )
 
-                    # Sort stubs in ascending order by title date
-                    sorted_stubs = sorted(stubs, key=lambda k: k["date"])
+                    # Apply exact-title relevance before limiting, then date.
+                    sorted_stubs = sorted(stubs, key=lambda k: (title_relevance(title, k["title"]), k["date"]))
                     if prefs["log_level"] in "DEBUG":
                         log.debug(
                             "sorted_stubs from TitleList.from_url(): {0}.".format(
@@ -958,9 +963,7 @@ class ISFDB4(Source):
                         # log.info('stub={0}'.format(stub))
                         # If the title found in isfdb's title record is identical to the metadata title,
                         # promote this title record
-                        relevance = 2
-                        if stripped(stub["title"]) == stripped(title):
-                            relevance = 0
+                        relevance = title_relevance(title, stub["title"])
 
                         if prefs["log_level"] in "DEBUG":
                             log.debug('stub["url"]={0}.'.format(stub["url"]))
@@ -1024,9 +1027,7 @@ class ISFDB4(Source):
                                     )
                                     # If the title found in isfdb's title record is identical to the metadata title,
                                     # promote this title record
-                                    relevance = 2
-                                    if stripped(stub["title"]) == stripped(title):
-                                        relevance = 0
+                                    relevance = title_relevance(title, stub["title"])
                                     url = Publication.url_from_id(pubno)
                                     if not title:
                                         provenance = author_provenance.setdefault(url, {"author_sources": {}, "author_ambiguity": {}})
@@ -1081,8 +1082,8 @@ class ISFDB4(Source):
                                 ).format(title, author)
                             )
 
-                    # Sort stubs in ascending order by pub year
-                    sorted_stubs = sorted(stubs, key=lambda k: k["pub_year"])
+                    # Apply exact-title relevance before limiting, then year.
+                    sorted_stubs = sorted(stubs, key=lambda k: (title_relevance(title, k["title"]), k["pub_year"]))
                     if prefs["log_level"] in "DEBUG":
                         log.debug(
                             "sorted_stubs from PublicationsList.from_url(): {0}.".format(
@@ -1092,9 +1093,7 @@ class ISFDB4(Source):
 
                     # for stub in stubs:
                     for stub in sorted_stubs:
-                        relevance = 2
-                        if stripped(stub["title"]) == stripped(title):
-                            relevance = 0  # this is the exact title
+                        relevance = title_relevance(title, stub["title"])
                         if stub["url"] is not None:
                             matches.add((stub["url"], relevance))
                             if prefs["log_level"] in "DEBUG":
